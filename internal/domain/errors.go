@@ -13,4 +13,7 @@ var (
 	ErrInvalidRegistration    = errors.New("invalid registration data")
 	ErrBadCredentials         = errors.New("invalid identifier or password")
 	ErrProfilePrivacyNotFound = errors.New("profile privacy not found")
+	LoginAttemptsNotFound     = errors.New("login attempts not found")
+	ErrLoginLocked            = errors.New("login locked")
+	ErrInvalidLogin           = errors.New("invalid login data")
 )

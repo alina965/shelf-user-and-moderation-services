@@ -15,20 +15,22 @@ import (
 )
 
 type Service struct {
-	hasher                 PasswordHasher
-	jwtService             TokenService
-	userRepository         UserRepository
-	refreshTokenRepository RefreshTokenRepository
-	refreshTokenTTL        time.Duration
+	hasher                  PasswordHasher
+	jwtService              TokenService
+	userRepository          UserRepository
+	refreshTokenRepository  RefreshTokenRepository
+	refreshTokenTTL         time.Duration
+	loginAttemptsRepository LoginAttemptsRepository
 }
 
-func NewAuthService(hasher PasswordHasher, jwtService TokenService, refreshTokenRepository RefreshTokenRepository, userRepository UserRepository, refreshTokenTTL time.Duration) *Service {
+func NewAuthService(hasher PasswordHasher, jwtService TokenService, refreshTokenRepository RefreshTokenRepository, userRepository UserRepository, loginAttemptsRepository LoginAttemptsRepository, refreshTokenTTL time.Duration) *Service {
 	return &Service{
-		hasher:                 hasher,
-		jwtService:             jwtService,
-		refreshTokenRepository: refreshTokenRepository,
-		userRepository:         userRepository,
-		refreshTokenTTL:        refreshTokenTTL,
+		hasher:                  hasher,
+		jwtService:              jwtService,
+		refreshTokenRepository:  refreshTokenRepository,
+		userRepository:          userRepository,
+		refreshTokenTTL:         refreshTokenTTL,
+		loginAttemptsRepository: loginAttemptsRepository,
 	}
 }
 
@@ -42,11 +44,16 @@ type TokenService interface {
 }
 
 type RefreshTokenRepository interface {
-	CreateSession(ctx context.Context, session *domain.Session, token *domain.RefreshToken) error
+	CreateSession(ctx context.Context, session *domain.Session, token *domain.RefreshToken, identifier string) error
 	CheckSession(ctx context.Context, userID, sessionID uuid.UUID) error
 	RevokeSession(ctx context.Context, userID, sessionID uuid.UUID) error
 	FindRefreshTokenByToken(ctx context.Context, token string) (*domain.RefreshToken, error)
 	RotateRefreshToken(ctx context.Context, oldToken string, newToken *domain.RefreshToken) error
+}
+
+type LoginAttemptsRepository interface {
+	CheckLocked(ctx context.Context, identifier string) error
+	RecordFailure(ctx context.Context, identifier string) (bool, error)
 }
 
 type UserRepository interface {
@@ -106,22 +113,33 @@ func (s *Service) Register(ctx context.Context, email, password, passwordConfirm
 }
 
 func (s *Service) Login(ctx context.Context, identifier, password string) (*domain.LoginResponse, error) {
-	identifier = strings.TrimSpace(identifier)
+	identifier = strings.ToLower(strings.TrimSpace(identifier))
 
-	if identifier == "" || password == "" {
-		return nil, domain.ErrBadCredentials
+	if identifier == "" || password == "" || utf8.RuneCountInString(password) > 32 {
+		return nil, domain.ErrInvalidLogin
+	}
+	if strings.Contains(identifier, "@") {
+		address, err := mail.ParseAddress(identifier)
+		if err != nil || address.Address != identifier || utf8.RuneCountInString(identifier) > 254 {
+			return nil, domain.ErrInvalidLogin
+		}
+	} else if !usernamePattern.MatchString(identifier) || strings.HasPrefix(identifier, ".") || strings.HasSuffix(identifier, ".") || strings.Contains(identifier, "..") {
+		return nil, domain.ErrInvalidLogin
+	}
+	if err := s.loginAttemptsRepository.CheckLocked(ctx, identifier); err != nil {
+		return nil, err
 	}
 
 	user, err := s.userRepository.GetUserByIdentifier(ctx, identifier)
 	if errors.Is(err, domain.ErrUserNotFound) {
-		return nil, domain.ErrBadCredentials
+		return nil, s.recordLoginFailure(ctx, identifier)
 	}
 	if err != nil {
 		return nil, err
 	}
 
 	if !s.hasher.Compare(user.PasswordHash, password) {
-		return nil, domain.ErrBadCredentials
+		return nil, s.recordLoginFailure(ctx, identifier)
 	}
 
 	privacy, err := s.userRepository.GetProfilePrivacy(ctx, user.ID)
@@ -140,7 +158,7 @@ func (s *Service) Login(ctx context.Context, identifier, password string) (*doma
 	refreshToken.SessionID = session.ID
 	refreshToken.ExpiresAt = session.ExpiresAt
 
-	if err := s.refreshTokenRepository.CreateSession(ctx, session, refreshToken); err != nil {
+	if err := s.refreshTokenRepository.CreateSession(ctx, session, refreshToken, identifier); err != nil {
 		return nil, err
 	}
 
@@ -155,6 +173,17 @@ func (s *Service) Login(ctx context.Context, identifier, password string) (*doma
 			Privacy:  *privacy,
 		},
 	}, nil
+}
+
+func (s *Service) recordLoginFailure(ctx context.Context, identifier string) error {
+	locked, err := s.loginAttemptsRepository.RecordFailure(ctx, identifier)
+	if err != nil {
+		return err
+	}
+	if locked {
+		return domain.ErrLoginLocked
+	}
+	return domain.ErrBadCredentials
 }
 
 func (s *Service) Refresh(ctx context.Context, token string) (*domain.RefreshResponse, error) {

@@ -131,6 +131,10 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 
 func writeServiceError(c *gin.Context, err error) {
 	switch {
+	case errors.Is(err, domain.ErrLoginLocked):
+		writeError(c, http.StatusTooManyRequests, "LOGIN_LOCKED", "Вход по этому идентификатору заблокирован на 1 час")
+	case errors.Is(err, domain.ErrInvalidLogin):
+		writeError(c, http.StatusBadRequest, "INVALID_LOGIN", "Некорректный email, имя пользователя или пароль")
 	case errors.Is(err, domain.ErrSessionRevoked):
 		writeError(c, http.StatusUnauthorized, "SESSION_REVOKED", "Сессия отозвана")
 	case errors.Is(err, domain.ErrSessionExpired):

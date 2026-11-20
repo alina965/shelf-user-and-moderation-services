@@ -30,9 +30,10 @@ func New(config *config.Config) (*App, error) {
 
 	userRepo := repository.NewUserRepository(db)
 	tokenRepo := repository.NewRefreshTokenRepository(db)
+	attemptsRepo := repository.NewLoginAttemptsRepository(db)
 	hasher := security.NewBcryptHasher(config.BcryptCost)
 	jwtService := jwt.NewJWTService([]byte(config.JwtSecret), config.AccessTokenTTL)
-	userService := auth.NewAuthService(hasher, jwtService, tokenRepo, userRepo, config.RefreshTokenTTL)
+	userService := auth.NewAuthService(hasher, jwtService, tokenRepo, userRepo, attemptsRepo, config.RefreshTokenTTL)
 	authHandler := api.NewAuthHandler(userService)
 
 	router := gin.Default()

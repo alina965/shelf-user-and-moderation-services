@@ -2,7 +2,7 @@
   "info": {
     "name": "User Service",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "description": "Запустите сервис с PostgreSQL и применёнными миграциями. Импортируйте коллекцию и запустите все запросы по порядку через Run collection. base_url по умолчанию http://localhost:8080, без /api/v1 для прямого обращения к сервису. Каждый полный запуск создаёт нового тестового пользователя; пользователь остаётся в БД. Токены сохраняются автоматически. Только текущие реализованные функции: регистрация, вход, профиль, refresh. Перед каждым запросом тестовые данные и токены копируются из переменных коллекции в локальные, чтобы environment и data не переопределяли их. Запускайте всю коллекцию с первого запроса по порядку. Запросы 13–18 проверяют выход только с первого устройства, отзыв access/refresh и сохранение доступа на втором."
+    "description": "Запустите сервис с PostgreSQL и применёнными миграциями. Импортируйте коллекцию и запустите все запросы по порядку через Run collection. base_url по умолчанию http://localhost:8080, без /api/v1 для прямого обращения к сервису. Каждый полный запуск создаёт нового тестового пользователя; пользователь остаётся в БД. Токены сохраняются автоматически. Только текущие реализованные функции: регистрация, вход, профиль, refresh. Перед каждым запросом тестовые данные и токены копируются из переменных коллекции в локальные, чтобы environment и data не переопределяли их. Запускайте всю коллекцию с первого запроса по порядку. Запросы 13–18 проверяют выход только с первого устройства, отзыв access/refresh и сохранение доступа на втором. Запросы 19–33 проверяют счётчик ошибок и блокировку входа. Запускайте полный набор с регистрации."
   },
   "variable": [
     {
@@ -906,6 +906,694 @@
             "exec": [
               "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
               "pm.test(\"Новый refresh второго устройства\", function () { pm.expect(pm.response.json().refresh_token).to.be.a(\"string\").and.not.empty; pm.expect(pm.response.json().refresh_token).not.to.equal(pm.collectionVariables.get(\"second_refresh_token\")); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "19 — Успешный вход сбрасывает предыдущую ошибку",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/auth/login",
+        "auth": {
+          "type": "noauth"
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"identifier\": \"{{email}}\", \"password\": \"{{password}}\"}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"email\", \"username\", \"password\"].forEach(function (key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "20 — Пустой пароль не учитывается",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/auth/login",
+        "auth": {
+          "type": "noauth"
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"identifier\": \"{{email}}\", \"password\": \"\"}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"email\", \"username\", \"password\"].forEach(function (key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 400\", function () { pm.response.to.have.status(400); });",
+              "pm.test(\"Ошибка INVALID_LOGIN\", function () { pm.expect(pm.response.json().error.code).to.equal(\"INVALID_LOGIN\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "21 — Неверный пароль: попытка 1",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/auth/login",
+        "auth": {
+          "type": "noauth"
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"identifier\": \"{{email}}\", \"password\": \"wrong-password\"}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"email\", \"username\", \"password\"].forEach(function (key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 401\", function () { pm.response.to.have.status(401); });",
+              "pm.test(\"Ошибка BAD_CREDENTIALS\", function () { pm.expect(pm.response.json().error.code).to.equal(\"BAD_CREDENTIALS\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "22 — Неверный пароль: попытка 2",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/auth/login",
+        "auth": {
+          "type": "noauth"
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"identifier\": \"{{email}}\", \"password\": \"wrong-password\"}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"email\", \"username\", \"password\"].forEach(function (key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 401\", function () { pm.response.to.have.status(401); });",
+              "pm.test(\"Ошибка BAD_CREDENTIALS\", function () { pm.expect(pm.response.json().error.code).to.equal(\"BAD_CREDENTIALS\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "23 — Неверный пароль: попытка 3",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/auth/login",
+        "auth": {
+          "type": "noauth"
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"identifier\": \"{{email}}\", \"password\": \"wrong-password\"}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"email\", \"username\", \"password\"].forEach(function (key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 401\", function () { pm.response.to.have.status(401); });",
+              "pm.test(\"Ошибка BAD_CREDENTIALS\", function () { pm.expect(pm.response.json().error.code).to.equal(\"BAD_CREDENTIALS\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "24 — Неверный пароль: попытка 4",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/auth/login",
+        "auth": {
+          "type": "noauth"
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"identifier\": \"{{email}}\", \"password\": \"wrong-password\"}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"email\", \"username\", \"password\"].forEach(function (key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 401\", function () { pm.response.to.have.status(401); });",
+              "pm.test(\"Ошибка BAD_CREDENTIALS\", function () { pm.expect(pm.response.json().error.code).to.equal(\"BAD_CREDENTIALS\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "25 — Неверный пароль: попытка 5",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/auth/login",
+        "auth": {
+          "type": "noauth"
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"identifier\": \"{{email}}\", \"password\": \"wrong-password\"}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"email\", \"username\", \"password\"].forEach(function (key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 429\", function () { pm.response.to.have.status(429); });",
+              "pm.test(\"Ошибка LOGIN_LOCKED\", function () { pm.expect(pm.response.json().error.code).to.equal(\"LOGIN_LOCKED\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "26 — Верный пароль не обходит блокировку",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/auth/login",
+        "auth": {
+          "type": "noauth"
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"identifier\": \"{{email}}\", \"password\": \"{{password}}\"}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"email\", \"username\", \"password\"].forEach(function (key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 429\", function () { pm.response.to.have.status(429); });",
+              "pm.test(\"Ошибка LOGIN_LOCKED\", function () { pm.expect(pm.response.json().error.code).to.equal(\"LOGIN_LOCKED\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "27 — Пробелы не обходят блокировку",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/auth/login",
+        "auth": {
+          "type": "noauth"
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"identifier\": \"  {{email}}  \", \"password\": \"{{password}}\"}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"email\", \"username\", \"password\"].forEach(function (key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 429\", function () { pm.response.to.have.status(429); });",
+              "pm.test(\"Ошибка LOGIN_LOCKED\", function () { pm.expect(pm.response.json().error.code).to.equal(\"LOGIN_LOCKED\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "28 — Имя пользователя независимо от email",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/auth/login",
+        "auth": {
+          "type": "noauth"
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"identifier\": \"{{username}}\", \"password\": \"{{password}}\"}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"email\", \"username\", \"password\"].forEach(function (key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "29 — Несуществующий аккаунт: попытка 1",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/auth/login",
+        "auth": {
+          "type": "noauth"
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"identifier\": \"missing_{{username}}@example.com\", \"password\": \"wrong-password\"}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"email\", \"username\", \"password\"].forEach(function (key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 401\", function () { pm.response.to.have.status(401); });",
+              "pm.test(\"Ошибка BAD_CREDENTIALS\", function () { pm.expect(pm.response.json().error.code).to.equal(\"BAD_CREDENTIALS\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "30 — Несуществующий аккаунт: попытка 2",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/auth/login",
+        "auth": {
+          "type": "noauth"
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"identifier\": \"missing_{{username}}@example.com\", \"password\": \"wrong-password\"}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"email\", \"username\", \"password\"].forEach(function (key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 401\", function () { pm.response.to.have.status(401); });",
+              "pm.test(\"Ошибка BAD_CREDENTIALS\", function () { pm.expect(pm.response.json().error.code).to.equal(\"BAD_CREDENTIALS\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "31 — Несуществующий аккаунт: попытка 3",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/auth/login",
+        "auth": {
+          "type": "noauth"
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"identifier\": \"missing_{{username}}@example.com\", \"password\": \"wrong-password\"}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"email\", \"username\", \"password\"].forEach(function (key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 401\", function () { pm.response.to.have.status(401); });",
+              "pm.test(\"Ошибка BAD_CREDENTIALS\", function () { pm.expect(pm.response.json().error.code).to.equal(\"BAD_CREDENTIALS\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "32 — Несуществующий аккаунт: попытка 4",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/auth/login",
+        "auth": {
+          "type": "noauth"
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"identifier\": \"missing_{{username}}@example.com\", \"password\": \"wrong-password\"}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"email\", \"username\", \"password\"].forEach(function (key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 401\", function () { pm.response.to.have.status(401); });",
+              "pm.test(\"Ошибка BAD_CREDENTIALS\", function () { pm.expect(pm.response.json().error.code).to.equal(\"BAD_CREDENTIALS\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "33 — Несуществующий аккаунт: попытка 5",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/auth/login",
+        "auth": {
+          "type": "noauth"
+        },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"identifier\": \"missing_{{username}}@example.com\", \"password\": \"wrong-password\"}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"email\", \"username\", \"password\"].forEach(function (key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 429\", function () { pm.response.to.have.status(429); });",
+              "pm.test(\"Ошибка LOGIN_LOCKED\", function () { pm.expect(pm.response.json().error.code).to.equal(\"LOGIN_LOCKED\"); });"
             ]
           }
         }

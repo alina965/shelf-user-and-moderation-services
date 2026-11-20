@@ -41,12 +41,15 @@ func (r *RefreshTokenRepository) CheckSession(ctx context.Context, userID, sessi
 	return checkSession(ctx, r.db, userID, sessionID, false)
 }
 
-func (r *RefreshTokenRepository) CreateSession(ctx context.Context, session *domain.Session, token *domain.RefreshToken) error {
+func (r *RefreshTokenRepository) CreateSession(ctx context.Context, session *domain.Session, token *domain.RefreshToken, identifier string) error {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
+	if err := resetLoginAttempts(ctx, tx, identifier); err != nil {
+		return err
+	}
 	_, err = tx.Exec(ctx, `INSERT INTO sessions (id, user_id, created_at, expires_at) VALUES ($1, $2, $3, $4)`,
 		session.ID, session.UserID, session.CreatedAt, session.ExpiresAt)
 	if err != nil {
