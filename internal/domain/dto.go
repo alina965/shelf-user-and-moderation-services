@@ -46,7 +46,8 @@ type RefreshResponse struct {
 }
 
 type UserResponse struct {
-	ID       uuid.UUID `json:"id"`
-	Email    string    `json:"email"`
-	Username string    `json:"username"`
+	ID       uuid.UUID      `json:"id"`
+	Email    string         `json:"email"`
+	Username string         `json:"username"`
+	Privacy  ProfilePrivacy `json:"privacy"`
 }

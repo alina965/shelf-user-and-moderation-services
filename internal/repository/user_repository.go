@@ -21,7 +21,13 @@ func NewUserRepository(db *pgxpool.Pool) *UserRepository {
 }
 
 func (r *UserRepository) CreateUser(ctx context.Context, user *domain.User) error {
-	_, err := r.db.Exec(ctx, "INSERT INTO users (id, username, email, password_hash, created_at) VALUES ($1, $2, $3, $4, $5)",
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	_, err = tx.Exec(ctx, "INSERT INTO users (id, username, email, password_hash, created_at) VALUES ($1, $2, $3, $4, $5)",
 		user.ID, user.Username, user.Email, user.PasswordHash, user.CreatedAt)
 
 	if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok && pgErr.Code == "23505" {
@@ -33,7 +39,17 @@ func (r *UserRepository) CreateUser(ctx context.Context, user *domain.User) erro
 		}
 	}
 
-	return err
+	if err != nil {
+		return err
+	}
+
+	_, err = tx.Exec(ctx, "INSERT INTO profile_privacy (user_id) VALUES ($1)", user.ID)
+
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
 }
 
 func (r *UserRepository) GetUserById(ctx context.Context, id uuid.UUID) (*domain.User, error) {
@@ -60,4 +76,18 @@ func (r *UserRepository) GetUserByIdentifier(ctx context.Context, identifier str
 	}
 
 	return user, nil
+}
+
+func (r *UserRepository) GetProfilePrivacy(ctx context.Context, id uuid.UUID) (*domain.ProfilePrivacy, error) {
+	row := r.db.QueryRow(ctx, "SELECT profile_visibility, description_visibility, friends_visibility, communities_visibility FROM profile_privacy WHERE user_id = $1", id)
+	privacy := &domain.ProfilePrivacy{}
+
+	err := row.Scan(&privacy.ProfileVisibility, &privacy.DescriptionVisibility, &privacy.FriendsVisibility, &privacy.CommunitiesVisibility)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrProfilePrivacyNotFound
+	} else if err != nil {
+		return nil, err
+	}
+
+	return privacy, nil
 }

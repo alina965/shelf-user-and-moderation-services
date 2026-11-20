@@ -53,6 +53,7 @@ type UserRepository interface {
 	CreateUser(ctx context.Context, user *domain.User) error
 	GetUserById(ctx context.Context, id uuid.UUID) (*domain.User, error)
 	GetUserByIdentifier(ctx context.Context, identifier string) (*domain.User, error)
+	GetProfilePrivacy(ctx context.Context, id uuid.UUID) (*domain.ProfilePrivacy, error)
 }
 
 var usernamePattern = regexp.MustCompile(`^[a-zA-Z0-9_.]{1,32}$`)
@@ -123,6 +124,11 @@ func (s *Service) Login(ctx context.Context, identifier, password string) (*doma
 		return nil, domain.ErrBadCredentials
 	}
 
+	privacy, err := s.userRepository.GetProfilePrivacy(ctx, user.ID)
+	if err != nil {
+		return nil, err
+	}
+
 	now := time.Now().UTC()
 	session := &domain.Session{ID: uuid.New(), UserID: user.ID, CreatedAt: now, ExpiresAt: now.Add(s.refreshTokenTTL)}
 	tokens, err := s.jwtService.Generate(user.ID.String(), user.Email, session.ID.String())
@@ -146,6 +152,7 @@ func (s *Service) Login(ctx context.Context, identifier, password string) (*doma
 			ID:       user.ID,
 			Email:    user.Email,
 			Username: user.Username,
+			Privacy:  *privacy,
 		},
 	}, nil
 }
@@ -204,10 +211,16 @@ func (s *Service) GetMe(ctx context.Context, userID uuid.UUID) (*domain.UserResp
 		return nil, err
 	}
 
+	privacy, err := s.userRepository.GetProfilePrivacy(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
 	return &domain.UserResponse{
 		ID:       user.ID,
 		Email:    user.Email,
 		Username: user.Username,
+		Privacy:  *privacy,
 	}, nil
 }
 
