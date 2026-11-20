@@ -2,6 +2,8 @@ package auth
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"net/mail"
 	"regexp"
@@ -57,10 +59,84 @@ type LoginAttemptsRepository interface {
 }
 
 type UserRepository interface {
+	GetProfile(ctx context.Context, ownerID, viewerID uuid.UUID) (*domain.ProfileData, error)
+	SearchUsers(ctx context.Context, query string, limit int, after *domain.UserSearchCursor) ([]domain.UserSearchRow, error)
 	CreateUser(ctx context.Context, user *domain.User) error
 	GetUserById(ctx context.Context, id uuid.UUID) (*domain.User, error)
 	GetUserByIdentifier(ctx context.Context, identifier string) (*domain.User, error)
 	GetProfilePrivacy(ctx context.Context, id uuid.UUID) (*domain.ProfilePrivacy, error)
+}
+
+func (s *Service) GetProfile(ctx context.Context, ownerID, viewerID uuid.UUID) (*domain.PublicProfile, error) {
+	profile, err := s.userRepository.GetProfile(ctx, ownerID, viewerID)
+	if err != nil {
+		return nil, err
+	}
+	isOwner := viewerID != uuid.Nil && viewerID == ownerID
+	canSee := func(visibility string) bool {
+		return isOwner || visibility == "public" || (visibility == "friends" && viewerID != uuid.Nil && profile.IsFriend && !profile.IsBlocked)
+	}
+	response := &domain.PublicProfile{
+		UserPreview: domain.UserPreview{ID: profile.ID, Username: profile.Username},
+		IsPrivate:   !canSee(profile.Privacy.ProfileVisibility),
+	}
+	if response.IsPrivate {
+		return response, nil
+	}
+	if canSee(profile.Privacy.DescriptionVisibility) {
+		response.Description = profile.Description
+	}
+	if canSee(profile.Privacy.FriendsVisibility) {
+		response.FriendsCount = &profile.FriendsCount
+	}
+	return response, nil
+}
+
+func (s *Service) SearchUsers(ctx context.Context, query string, limit int, cursor string) (*domain.UserSearchResponse, error) {
+	query = strings.ToLower(strings.TrimSpace(query))
+	if query == "" {
+		return nil, domain.ErrQueryRequired
+	}
+	if utf8.RuneCountInString(query) < 2 {
+		return nil, domain.ErrQueryTooShort
+	}
+	if limit < 1 || limit > 20 {
+		return nil, domain.ErrInvalidLimit
+	}
+	var after *domain.UserSearchCursor
+	if cursor != "" {
+		if len(cursor) > 4096 {
+			return nil, domain.ErrInvalidCursor
+		}
+		data, err := base64.RawURLEncoding.DecodeString(cursor)
+		if err != nil {
+			return nil, domain.ErrInvalidCursor
+		}
+		after = &domain.UserSearchCursor{}
+		if err := json.Unmarshal(data, after); err != nil || after.Version != 1 || after.Query != query ||
+			after.Rank < 0 || after.Rank > 2 || after.Name == "" || after.ID == uuid.Nil {
+			return nil, domain.ErrInvalidCursor
+		}
+	}
+	rows, err := s.userRepository.SearchUsers(ctx, query, limit+1, after)
+	if err != nil {
+		return nil, err
+	}
+	response := &domain.UserSearchResponse{Items: make([]domain.UserPreview, 0)}
+	if len(rows) > limit {
+		last := rows[limit-1]
+		data, err := json.Marshal(domain.UserSearchCursor{Version: 1, Query: query, Rank: last.Rank, Name: last.SortName, ID: last.ID})
+		if err != nil {
+			return nil, err
+		}
+		next := base64.RawURLEncoding.EncodeToString(data)
+		response.NextCursor = &next
+		rows = rows[:limit]
+	}
+	for _, row := range rows {
+		response.Items = append(response.Items, row.UserPreview)
+	}
+	return response, nil
 }
 
 var usernamePattern = regexp.MustCompile(`^[a-zA-Z0-9_.]{1,32}$`)
@@ -142,7 +218,7 @@ func (s *Service) Login(ctx context.Context, identifier, password string) (*doma
 		return nil, s.recordLoginFailure(ctx, identifier)
 	}
 
-	privacy, err := s.userRepository.GetProfilePrivacy(ctx, user.ID)
+	profile, err := s.userRepository.GetProfile(ctx, user.ID, user.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -167,10 +243,12 @@ func (s *Service) Login(ctx context.Context, identifier, password string) (*doma
 		RefreshToken: tokens.RefreshToken,
 		ExpiresIn:    int64(time.Until(tokens.ExpiresAt).Seconds()),
 		User: domain.UserResponse{
-			ID:       user.ID,
-			Email:    user.Email,
-			Username: user.Username,
-			Privacy:  *privacy,
+			ID:           user.ID,
+			Email:        user.Email,
+			Username:     user.Username,
+			Privacy:      profile.Privacy,
+			Description:  profile.Description,
+			FriendsCount: profile.FriendsCount,
 		},
 	}, nil
 }
@@ -240,16 +318,18 @@ func (s *Service) GetMe(ctx context.Context, userID uuid.UUID) (*domain.UserResp
 		return nil, err
 	}
 
-	privacy, err := s.userRepository.GetProfilePrivacy(ctx, userID)
+	profile, err := s.userRepository.GetProfile(ctx, userID, userID)
 	if err != nil {
 		return nil, err
 	}
 
 	return &domain.UserResponse{
-		ID:       user.ID,
-		Email:    user.Email,
-		Username: user.Username,
-		Privacy:  *privacy,
+		ID:           user.ID,
+		Email:        user.Email,
+		Username:     user.Username,
+		Privacy:      profile.Privacy,
+		Description:  profile.Description,
+		FriendsCount: profile.FriendsCount,
 	}, nil
 }
 

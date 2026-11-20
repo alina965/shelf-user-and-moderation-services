@@ -2,7 +2,7 @@
   "info": {
     "name": "User Service",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "description": "Запустите сервис с PostgreSQL и применёнными миграциями. Импортируйте коллекцию и запустите все запросы по порядку через Run collection. base_url по умолчанию http://localhost:8080, без /api/v1 для прямого обращения к сервису. Каждый полный запуск создаёт нового тестового пользователя; пользователь остаётся в БД. Токены сохраняются автоматически. Только текущие реализованные функции: регистрация, вход, профиль, refresh. Перед каждым запросом тестовые данные и токены копируются из переменных коллекции в локальные, чтобы environment и data не переопределяли их. Запускайте всю коллекцию с первого запроса по порядку. Запросы 13–18 проверяют выход только с первого устройства, отзыв access/refresh и сохранение доступа на втором. Запросы 19–33 проверяют счётчик ошибок и блокировку входа. Запускайте полный набор с регистрации."
+    "description": "Запустите сервис с PostgreSQL и применёнными миграциями. Импортируйте коллекцию и запустите все запросы по порядку через Run collection. base_url по умолчанию http://localhost:8080, без /api/v1 для прямого обращения к сервису. Каждый полный запуск создаёт нового тестового пользователя; пользователь остаётся в БД. Токены сохраняются автоматически. Только текущие реализованные функции: регистрация, вход, профиль, refresh. Перед каждым запросом тестовые данные и токены копируются из переменных коллекции в локальные, чтобы environment и data не переопределяли их. Запускайте всю коллекцию с первого запроса по порядку. Запросы 13–18 проверяют выход только с первого устройства, отзыв access/refresh и сохранение доступа на втором. Запросы 19–33 проверяют счётчик ошибок и блокировку входа. Запускайте полный набор с регистрации. Запросы 34–45 проверяют публичный поиск, сортировку, курсоры и ошибки ввода. Запросы 46–51 проверяют просмотр профиля, отсутствие закрытых полей и проверку переданной сессии."
   },
   "variable": [
     {
@@ -43,6 +43,10 @@
     },
     {
       "key": "second_refresh_token",
+      "value": ""
+    },
+    {
+      "key": "search_cursor",
       "value": ""
     }
   ],
@@ -261,7 +265,10 @@
               "}",
               "pm.test(\"Вход выполнен в созданный аккаунт\", function () {",
               "    pm.expect(pm.response.json().user.id).to.equal(pm.collectionVariables.get(\"user_id\"));",
-              "});"
+              "});",
+              "pm.test(\"Аватар-заглушка\", function () { const user = pm.response.json().user; pm.expect(user).to.have.property(\"avatar_url\"); pm.expect(user.avatar_url).to.equal(null); });",
+              "pm.test(\"Шапка профиля: стандартный фон\", function () { const user = pm.response.json().user; pm.expect(user).to.have.property(\"banner_url\"); pm.expect(user.banner_url).to.equal(null); });",
+              "pm.test(\"Описание и число друзей нового пользователя\", function () { const user = pm.response.json().user; pm.expect(user).to.have.property(\"description\"); pm.expect(user.description).to.equal(null); pm.expect(user).to.have.property(\"friends_count\"); pm.expect(user.friends_count).to.equal(0); });"
             ]
           }
         }
@@ -322,7 +329,10 @@
               "}",
               "pm.test(\"Вход выполнен в созданный аккаунт\", function () {",
               "    pm.expect(pm.response.json().user.id).to.equal(pm.collectionVariables.get(\"user_id\"));",
-              "});"
+              "});",
+              "pm.test(\"Аватар-заглушка\", function () { const user = pm.response.json().user; pm.expect(user).to.have.property(\"avatar_url\"); pm.expect(user.avatar_url).to.equal(null); });",
+              "pm.test(\"Шапка профиля: стандартный фон\", function () { const user = pm.response.json().user; pm.expect(user).to.have.property(\"banner_url\"); pm.expect(user.banner_url).to.equal(null); });",
+              "pm.test(\"Описание и число друзей нового пользователя\", function () { const user = pm.response.json().user; pm.expect(user).to.have.property(\"description\"); pm.expect(user.description).to.equal(null); pm.expect(user).to.have.property(\"friends_count\"); pm.expect(user.friends_count).to.equal(0); });"
             ]
           }
         }
@@ -418,7 +428,10 @@
               "    pm.expect(user.username).to.equal(pm.collectionVariables.get(\"username\"));",
               "    pm.expect(user).not.to.have.property(\"password\");",
               "    pm.expect(user).not.to.have.property(\"password_hash\");",
-              "});"
+              "});",
+              "pm.test(\"Аватар-заглушка\", function () { const user = pm.response.json(); pm.expect(user).to.have.property(\"avatar_url\"); pm.expect(user.avatar_url).to.equal(null); });",
+              "pm.test(\"Шапка профиля: стандартный фон\", function () { const user = pm.response.json(); pm.expect(user).to.have.property(\"banner_url\"); pm.expect(user.banner_url).to.equal(null); });",
+              "pm.test(\"Описание и число друзей нового пользователя\", function () { const user = pm.response.json(); pm.expect(user).to.have.property(\"description\"); pm.expect(user.description).to.equal(null); pm.expect(user).to.have.property(\"friends_count\"); pm.expect(user.friends_count).to.equal(0); });"
             ]
           }
         }
@@ -655,7 +668,10 @@
               "    pm.expect(user.username).to.equal(pm.collectionVariables.get(\"username\"));",
               "    pm.expect(user).not.to.have.property(\"password\");",
               "    pm.expect(user).not.to.have.property(\"password_hash\");",
-              "});"
+              "});",
+              "pm.test(\"Аватар-заглушка\", function () { const user = pm.response.json(); pm.expect(user).to.have.property(\"avatar_url\"); pm.expect(user.avatar_url).to.equal(null); });",
+              "pm.test(\"Шапка профиля: стандартный фон\", function () { const user = pm.response.json(); pm.expect(user).to.have.property(\"banner_url\"); pm.expect(user.banner_url).to.equal(null); });",
+              "pm.test(\"Описание и число друзей нового пользователя\", function () { const user = pm.response.json(); pm.expect(user).to.have.property(\"description\"); pm.expect(user.description).to.equal(null); pm.expect(user).to.have.property(\"friends_count\"); pm.expect(user.friends_count).to.equal(0); });"
             ]
           }
         }
@@ -859,7 +875,10 @@
             "type": "text/javascript",
             "exec": [
               "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
-              "pm.test(\"Тот же пользователь\", function () { pm.expect(pm.response.json().id).to.equal(pm.collectionVariables.get(\"user_id\")); });"
+              "pm.test(\"Тот же пользователь\", function () { pm.expect(pm.response.json().id).to.equal(pm.collectionVariables.get(\"user_id\")); });",
+              "pm.test(\"Аватар-заглушка\", function () { const user = pm.response.json(); pm.expect(user).to.have.property(\"avatar_url\"); pm.expect(user.avatar_url).to.equal(null); });",
+              "pm.test(\"Шапка профиля: стандартный фон\", function () { const user = pm.response.json(); pm.expect(user).to.have.property(\"banner_url\"); pm.expect(user.banner_url).to.equal(null); });",
+              "pm.test(\"Описание и число друзей нового пользователя\", function () { const user = pm.response.json(); pm.expect(user).to.have.property(\"description\"); pm.expect(user.description).to.equal(null); pm.expect(user).to.have.property(\"friends_count\"); pm.expect(user.friends_count).to.equal(0); });"
             ]
           }
         }
@@ -1598,6 +1617,646 @@
           }
         }
       ]
+    },
+    {
+      "name": "34 — Пользователь для пагинации a",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/auth/register",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"email\": \"search_a_{{email}}\", \"username\": \"{{username}}_a\", \"password\": \"{{password}}\", \"password_confirmation\": \"{{password}}\"}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"email\",\"username\",\"password\",\"search_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 201\", function () { pm.response.to.have.status(201); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "35 — Пользователь для пагинации b",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/auth/register",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"email\": \"search_b_{{email}}\", \"username\": \"{{username}}_b\", \"password\": \"{{password}}\", \"password_confirmation\": \"{{password}}\"}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"email\",\"username\",\"password\",\"search_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 201\", function () { pm.response.to.have.status(201); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "36 — Поиск: страница 1",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/users?q={{username}}&limit=1",
+        "header": [],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"email\",\"username\",\"password\",\"search_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+              "pm.test(\"Одно ожидаемое имя\", function () { const b=pm.response.json(); pm.expect(b.items).to.have.lengthOf(1); pm.expect(b.items[0].username).to.equal(pm.collectionVariables.get(\"username\") + \"\"); });",
+              "pm.test(\"Только публичные поля\", function () { pm.response.json().items.forEach(function (u) { pm.expect(u).to.have.all.keys(\"id\",\"username\",\"avatar_url\"); pm.expect(u.avatar_url).to.equal(null); }); });",
+              "pm.test(\"Есть следующая страница\", function () { pm.expect(pm.response.json().next_cursor).to.be.a(\"string\").and.not.empty; });",
+              "if (pm.response.code === 200) pm.collectionVariables.set(\"search_cursor\",pm.response.json().next_cursor);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "37 — Поиск: страница 2",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/users?q={{username}}&limit=1&cursor={{search_cursor}}",
+        "header": [],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"email\",\"username\",\"password\",\"search_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+              "pm.test(\"Одно ожидаемое имя\", function () { const b=pm.response.json(); pm.expect(b.items).to.have.lengthOf(1); pm.expect(b.items[0].username).to.equal(pm.collectionVariables.get(\"username\") + \"_a\"); });",
+              "pm.test(\"Только публичные поля\", function () { pm.response.json().items.forEach(function (u) { pm.expect(u).to.have.all.keys(\"id\",\"username\",\"avatar_url\"); pm.expect(u.avatar_url).to.equal(null); }); });",
+              "pm.test(\"Есть следующая страница\", function () { pm.expect(pm.response.json().next_cursor).to.be.a(\"string\").and.not.empty; });",
+              "if (pm.response.code === 200) pm.collectionVariables.set(\"search_cursor\",pm.response.json().next_cursor);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "38 — Поиск: страница 3",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/users?q={{username}}&limit=1&cursor={{search_cursor}}",
+        "header": [],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"email\",\"username\",\"password\",\"search_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+              "pm.test(\"Одно ожидаемое имя\", function () { const b=pm.response.json(); pm.expect(b.items).to.have.lengthOf(1); pm.expect(b.items[0].username).to.equal(pm.collectionVariables.get(\"username\") + \"_b\"); });",
+              "pm.test(\"Только публичные поля\", function () { pm.response.json().items.forEach(function (u) { pm.expect(u).to.have.all.keys(\"id\",\"username\",\"avatar_url\"); pm.expect(u.avatar_url).to.equal(null); }); });",
+              "pm.test(\"Последняя страница\", function () { pm.expect(pm.response.json().next_cursor).to.equal(null); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "39 — Поиск без учёта регистра и пробелов",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/users?q={{search_query}}",
+        "header": [],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"email\",\"username\",\"password\",\"search_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });",
+              "pm.variables.set(\"search_query\", encodeURIComponent(\"  \" + pm.collectionVariables.get(\"username\").toUpperCase() + \"  \"));"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+              "pm.test(\"Три результата\",function () { pm.expect(pm.response.json().items).to.have.lengthOf(3); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "40 — Поиск: QUERY_TOO_SHORT",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/users?q=a",
+        "header": [],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"email\",\"username\",\"password\",\"search_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 400\", function () { pm.response.to.have.status(400); });",
+              "pm.test(\"Ошибка QUERY_TOO_SHORT\", function () { pm.expect(pm.response.json().error.code).to.equal(\"QUERY_TOO_SHORT\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "41 — Поиск: QUERY_REQUIRED",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/users",
+        "header": [],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"email\",\"username\",\"password\",\"search_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 400\", function () { pm.response.to.have.status(400); });",
+              "pm.test(\"Ошибка QUERY_REQUIRED\", function () { pm.expect(pm.response.json().error.code).to.equal(\"QUERY_REQUIRED\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "42 — Поиск: INVALID_LIMIT",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/users?q=anna&limit=21",
+        "header": [],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"email\",\"username\",\"password\",\"search_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 400\", function () { pm.response.to.have.status(400); });",
+              "pm.test(\"Ошибка INVALID_LIMIT\", function () { pm.expect(pm.response.json().error.code).to.equal(\"INVALID_LIMIT\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "43 — Поиск: INVALID_CURSOR",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/users?q=anna&cursor=invalid",
+        "header": [],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"email\",\"username\",\"password\",\"search_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 400\", function () { pm.response.to.have.status(400); });",
+              "pm.test(\"Ошибка INVALID_CURSOR\", function () { pm.expect(pm.response.json().error.code).to.equal(\"INVALID_CURSOR\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "44 — Поиск без результатов",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/users?q=not_found_{{username}}",
+        "header": [],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"email\",\"username\",\"password\",\"search_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+              "pm.test(\"Пустая страница\",function () { const b=pm.response.json(); pm.expect(b.items).to.deep.equal([]); pm.expect(b.next_cursor).to.equal(null); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "45 — Символы шаблона ищутся буквально",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/users?q=%25_",
+        "header": [],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"email\",\"username\",\"password\",\"search_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+              "pm.test(\"Проценты и подчёркивания не являются шаблоном\",function () { pm.expect(pm.response.json().items).to.deep.equal([]); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "46 — Профиль доступен гостю",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/users/{{user_id}}",
+        "header": [],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"user_id\",\"username\",\"access_token\",\"second_access_token\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+              "pm.test(\"Публичные данные профиля\", function () { const p=pm.response.json(); pm.expect(p.id).to.equal(pm.collectionVariables.get(\"user_id\")); pm.expect(p.username).to.equal(pm.collectionVariables.get(\"username\")); pm.expect(p.is_private).to.equal(false); pm.expect(p.avatar_url).to.equal(null); pm.expect(p.banner_url).to.equal(null); });",
+              "pm.test(\"Нет закрытых полей\", function () { const p=pm.response.json(); [\"email\",\"privacy\",\"role\",\"password\",\"password_hash\"].forEach(function(key) { pm.expect(p).not.to.have.property(key); }); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "47 — Неверный ID профиля",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/users/not-a-uuid",
+        "header": [],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"user_id\",\"username\",\"access_token\",\"second_access_token\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 404\", function () { pm.response.to.have.status(404); });",
+              "pm.test(\"Ошибка PROFILE_NOT_FOUND\", function () { pm.expect(pm.response.json().error.code).to.equal(\"PROFILE_NOT_FOUND\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "48 — Профиль не существует",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/users/ffffffff-ffff-4fff-8fff-ffffffffffff",
+        "header": [],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"user_id\",\"username\",\"access_token\",\"second_access_token\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 404\", function () { pm.response.to.have.status(404); });",
+              "pm.test(\"Ошибка PROFILE_NOT_FOUND\", function () { pm.expect(pm.response.json().error.code).to.equal(\"PROFILE_NOT_FOUND\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "49 — Профиль с неверным токеном",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/users/{{user_id}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer invalid-token"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"user_id\",\"username\",\"access_token\",\"second_access_token\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 401\", function () { pm.response.to.have.status(401); });",
+              "pm.test(\"Ошибка UNAUTHORIZED\", function () { pm.expect(pm.response.json().error.code).to.equal(\"UNAUTHORIZED\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "50 — Профиль с отозванной сессией",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/users/{{user_id}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"user_id\",\"username\",\"access_token\",\"second_access_token\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 401\", function () { pm.response.to.have.status(401); });",
+              "pm.test(\"Ошибка SESSION_REVOKED\", function () { pm.expect(pm.response.json().error.code).to.equal(\"SESSION_REVOKED\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "51 — Профиль с действующей сессией",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/users/{{user_id}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{second_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"user_id\",\"username\",\"access_token\",\"second_access_token\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+              "pm.test(\"Публичные данные профиля\", function () { const p=pm.response.json(); pm.expect(p.id).to.equal(pm.collectionVariables.get(\"user_id\")); pm.expect(p.username).to.equal(pm.collectionVariables.get(\"username\")); pm.expect(p.is_private).to.equal(false); pm.expect(p.avatar_url).to.equal(null); pm.expect(p.banner_url).to.equal(null); });",
+              "pm.test(\"Нет закрытых полей\", function () { const p=pm.response.json(); [\"email\",\"privacy\",\"role\",\"password\",\"password_hash\"].forEach(function(key) { pm.expect(p).not.to.have.property(key); }); });"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.test(\"Ответ содержит X-Request-ID\", function () { pm.expect(pm.response.headers.get(\"X-Request-ID\")).to.be.a(\"string\").and.not.empty; });",
+          "if (pm.response.code >= 400) { pm.test(\"request_id ошибки совпадает с заголовком\", function () { const body=pm.response.json(); pm.expect(body.request_id).to.be.a(\"string\").and.not.empty; pm.expect(body.request_id).to.equal(pm.response.headers.get(\"X-Request-ID\")); }); }"
+        ]
+      }
     }
   ]
 }

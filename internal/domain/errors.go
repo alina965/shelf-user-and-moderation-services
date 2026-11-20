@@ -3,6 +3,12 @@ package domain
 import "errors"
 
 var (
+	ErrAccessCheckUnavailable = errors.New("access check unavailable")
+	ErrProfileNotFound        = errors.New("profile not found")
+	ErrQueryTooShort          = errors.New("search query too short")
+	ErrQueryRequired          = errors.New("search query required")
+	ErrInvalidLimit           = errors.New("invalid page limit")
+	ErrInvalidCursor          = errors.New("invalid search cursor")
 	ErrSessionRevoked         = errors.New("session revoked")
 	ErrSessionExpired         = errors.New("session expired")
 	ErrSessionUnavailable     = errors.New("session storage unavailable")

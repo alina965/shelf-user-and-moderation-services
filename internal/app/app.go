@@ -37,11 +37,14 @@ func New(config *config.Config) (*App, error) {
 	authHandler := api.NewAuthHandler(userService)
 
 	router := gin.Default()
+	router.Use(api.RequestIDMiddleware())
 
 	router.POST("/auth/register", authHandler.Register)
 	router.POST("/auth/login", authHandler.Login)
 	router.POST("/auth/refresh", authHandler.Refresh)
 	router.GET("/users/me", api.AuthMiddleware(jwtService, userService), authHandler.GetMe)
+	router.GET("/users", authHandler.SearchUsers)
+	router.GET("/users/:id", api.OptionalAuthMiddleware(jwtService, userService), authHandler.GetProfile)
 	router.POST("/auth/logout", api.AuthMiddleware(jwtService, userService), authHandler.Logout)
 
 	return &App{db: db, server: &http.Server{Addr: config.Addr, Handler: router}}, nil
