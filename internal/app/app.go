@@ -5,12 +5,13 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/alina965/pLaNtS/user-service/internal/api"
-	"github.com/alina965/pLaNtS/user-service/internal/auth"
-	"github.com/alina965/pLaNtS/user-service/internal/config"
-	"github.com/alina965/pLaNtS/user-service/internal/jwt"
-	"github.com/alina965/pLaNtS/user-service/internal/repository"
-	"github.com/alina965/pLaNtS/user-service/internal/security"
+	"github.com/alina965/user-service/internal/api"
+	"github.com/alina965/user-service/internal/auth"
+	"github.com/alina965/user-service/internal/config"
+	"github.com/alina965/user-service/internal/friendship"
+	"github.com/alina965/user-service/internal/jwt"
+	"github.com/alina965/user-service/internal/repository"
+	"github.com/alina965/user-service/internal/security"
 	"github.com/gin-gonic/gin"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -35,6 +36,7 @@ func New(config *config.Config) (*App, error) {
 	jwtService := jwt.NewJWTService([]byte(config.JwtSecret), config.AccessTokenTTL)
 	userService := auth.NewAuthService(hasher, jwtService, tokenRepo, userRepo, attemptsRepo, config.RefreshTokenTTL)
 	authHandler := api.NewAuthHandler(userService)
+	friendshipHandler := api.NewFriendshipHandler(friendship.NewService(repository.NewFriendshipRepository(db)))
 
 	router := gin.Default()
 	router.Use(api.RequestIDMiddleware())
@@ -46,6 +48,12 @@ func New(config *config.Config) (*App, error) {
 	router.GET("/users", authHandler.SearchUsers)
 	router.GET("/users/:id", api.OptionalAuthMiddleware(jwtService, userService), authHandler.GetProfile)
 	router.POST("/auth/logout", api.AuthMiddleware(jwtService, userService), authHandler.Logout)
+	router.POST("/users/:id/friend-requests", api.AuthMiddleware(jwtService, userService), friendshipHandler.Send)
+	router.GET("/friend-requests", api.AuthMiddleware(jwtService, userService), friendshipHandler.Requests)
+	router.POST("/friend-requests/:id/accept", api.AuthMiddleware(jwtService, userService), friendshipHandler.Accept)
+	router.DELETE("/friend-requests/:id", api.AuthMiddleware(jwtService, userService), friendshipHandler.Dismiss)
+	router.DELETE("/users/me/friends/:user_id", api.AuthMiddleware(jwtService, userService), friendshipHandler.Remove)
+	router.GET("/users/:id/friends", api.OptionalAuthMiddleware(jwtService, userService), friendshipHandler.Friends)
 
 	return &App{db: db, server: &http.Server{Addr: config.Addr, Handler: router}}, nil
 }

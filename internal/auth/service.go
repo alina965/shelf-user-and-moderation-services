@@ -11,7 +11,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/alina965/pLaNtS/user-service/internal/domain"
+	"github.com/alina965/user-service/internal/domain"
 
 	"github.com/google/uuid"
 )

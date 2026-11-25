@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/alina965/pLaNtS/user-service/internal/domain"
+	"github.com/alina965/user-service/internal/domain"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )

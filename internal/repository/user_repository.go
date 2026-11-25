@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/alina965/pLaNtS/user-service/internal/domain"
+	"github.com/alina965/user-service/internal/domain"
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/google/uuid"
@@ -126,8 +126,14 @@ func (r *UserRepository) SearchUsers(ctx context.Context, query string, limit in
 }
 
 func (r *UserRepository) GetProfile(ctx context.Context, ownerID, viewerID uuid.UUID) (*domain.ProfileData, error) {
+	return getProfile(ctx, r.db, ownerID, viewerID)
+}
+
+func getProfile(ctx context.Context, db interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+}, ownerID, viewerID uuid.UUID) (*domain.ProfileData, error) {
 	profile := &domain.ProfileData{}
-	err := r.db.QueryRow(ctx, `SELECT u.id, u.username, u.description,
+	err := db.QueryRow(ctx, `SELECT u.id, u.username, u.description,
 		p.profile_visibility, p.description_visibility, p.friends_visibility, p.communities_visibility,
 		EXISTS (SELECT 1 FROM friendships WHERE first_user_id = LEAST($1::uuid, $2::uuid)
 			AND second_user_id = GREATEST($1::uuid, $2::uuid)),

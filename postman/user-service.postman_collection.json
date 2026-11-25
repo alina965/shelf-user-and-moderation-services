@@ -2,7 +2,7 @@
   "info": {
     "name": "User Service",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "description": "Запустите сервис с PostgreSQL и применёнными миграциями. Импортируйте коллекцию и запустите все запросы по порядку через Run collection. base_url по умолчанию http://localhost:8080, без /api/v1 для прямого обращения к сервису. Каждый полный запуск создаёт нового тестового пользователя; пользователь остаётся в БД. Токены сохраняются автоматически. Только текущие реализованные функции: регистрация, вход, профиль, refresh. Перед каждым запросом тестовые данные и токены копируются из переменных коллекции в локальные, чтобы environment и data не переопределяли их. Запускайте всю коллекцию с первого запроса по порядку. Запросы 13–18 проверяют выход только с первого устройства, отзыв access/refresh и сохранение доступа на втором. Запросы 19–33 проверяют счётчик ошибок и блокировку входа. Запускайте полный набор с регистрации. Запросы 34–45 проверяют публичный поиск, сортировку, курсоры и ошибки ввода. Запросы 46–51 проверяют просмотр профиля, отсутствие закрытых полей и проверку переданной сессии."
+    "description": "Запустите сервис с PostgreSQL и применёнными миграциями. Импортируйте коллекцию и запустите все запросы по порядку через Run collection. base_url по умолчанию http://localhost:8080, без /api/v1 для прямого обращения к сервису. Каждый полный запуск создаёт нового тестового пользователя; пользователь остаётся в БД. Токены сохраняются автоматически. Только текущие реализованные функции: регистрация, вход, профиль, refresh. Перед каждым запросом тестовые данные и токены копируются из переменных коллекции в локальные, чтобы environment и data не переопределяли их. Запускайте всю коллекцию с первого запроса по порядку. Запросы 13–18 проверяют выход только с первого устройства, отзыв access/refresh и сохранение доступа на втором. Запросы 19–33 проверяют счётчик ошибок и блокировку входа. Запускайте полный набор с регистрации. Запросы 34–45 проверяют публичный поиск, сортировку, курсоры и ошибки ввода. Запросы 46–51 проверяют просмотр профиля, отсутствие закрытых полей и проверку переданной сессии. Запросы 52 и далее проверяют полный цикл заявок и дружбы: повторы, встречные заявки, права участников, принятие, отказ, отмену, удаление и счётчики."
   },
   "variable": [
     {
@@ -47,6 +47,38 @@
     },
     {
       "key": "search_cursor",
+      "value": ""
+    },
+    {
+      "key": "friend_access_token",
+      "value": ""
+    },
+    {
+      "key": "peer_id",
+      "value": ""
+    },
+    {
+      "key": "peer_username",
+      "value": ""
+    },
+    {
+      "key": "peer_access_token",
+      "value": ""
+    },
+    {
+      "key": "outsider_id",
+      "value": ""
+    },
+    {
+      "key": "outsider_username",
+      "value": ""
+    },
+    {
+      "key": "outsider_access_token",
+      "value": ""
+    },
+    {
+      "key": "friend_request_id",
       "value": ""
     }
   ],
@@ -2241,6 +2273,1559 @@
               "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
               "pm.test(\"Публичные данные профиля\", function () { const p=pm.response.json(); pm.expect(p.id).to.equal(pm.collectionVariables.get(\"user_id\")); pm.expect(p.username).to.equal(pm.collectionVariables.get(\"username\")); pm.expect(p.is_private).to.equal(false); pm.expect(p.avatar_url).to.equal(null); pm.expect(p.banner_url).to.equal(null); });",
               "pm.test(\"Нет закрытых полей\", function () { const p=pm.response.json(); [\"email\",\"privacy\",\"role\",\"password\",\"password_hash\"].forEach(function(key) { pm.expect(p).not.to.have.property(key); }); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "52 — Новая сессия для проверки дружбы",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/auth/login",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"identifier\": \"{{username}}\",\n  \"password\": \"{{password}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"username\",\"password\",\"user_id\",\"friend_access_token\",\"peer_id\",\"peer_username\",\"peer_access_token\",\"outsider_id\",\"outsider_username\",\"outsider_access_token\",\"friend_request_id\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+              "if (pm.response.code === 200) pm.collectionVariables.set(\"friend_access_token\", pm.response.json().access_token);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "53 — Регистрация peer",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/auth/register",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{peer_username}}@example.com\",\n  \"username\": \"{{peer_username}}\",\n  \"password\": \"{{password}}\",\n  \"password_confirmation\": \"{{password}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.collectionVariables.set(\"peer_username\", pm.collectionVariables.get(\"username\") + \"_fr\");",
+              "[\"username\",\"password\",\"user_id\",\"friend_access_token\",\"peer_id\",\"peer_username\",\"peer_access_token\",\"outsider_id\",\"outsider_username\",\"outsider_access_token\",\"friend_request_id\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 201\", function () { pm.response.to.have.status(201); });",
+              "if (pm.response.code === 201) pm.collectionVariables.set(\"peer_id\", pm.response.json().user_id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "54 — Вход peer",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/auth/login",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"identifier\": \"{{peer_username}}\",\n  \"password\": \"{{password}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"username\",\"password\",\"user_id\",\"friend_access_token\",\"peer_id\",\"peer_username\",\"peer_access_token\",\"outsider_id\",\"outsider_username\",\"outsider_access_token\",\"friend_request_id\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+              "if (pm.response.code === 200) pm.collectionVariables.set(\"peer_access_token\", pm.response.json().access_token);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "55 — Регистрация outsider",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/auth/register",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{outsider_username}}@example.com\",\n  \"username\": \"{{outsider_username}}\",\n  \"password\": \"{{password}}\",\n  \"password_confirmation\": \"{{password}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.collectionVariables.set(\"outsider_username\", pm.collectionVariables.get(\"username\") + \"_ot\");",
+              "[\"username\",\"password\",\"user_id\",\"friend_access_token\",\"peer_id\",\"peer_username\",\"peer_access_token\",\"outsider_id\",\"outsider_username\",\"outsider_access_token\",\"friend_request_id\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 201\", function () { pm.response.to.have.status(201); });",
+              "if (pm.response.code === 201) pm.collectionVariables.set(\"outsider_id\", pm.response.json().user_id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "56 — Вход outsider",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/auth/login",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"identifier\": \"{{outsider_username}}\",\n  \"password\": \"{{password}}\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"username\",\"password\",\"user_id\",\"friend_access_token\",\"peer_id\",\"peer_username\",\"peer_access_token\",\"outsider_id\",\"outsider_username\",\"outsider_access_token\",\"friend_request_id\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+              "if (pm.response.code === 200) pm.collectionVariables.set(\"outsider_access_token\", pm.response.json().access_token);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "57 — Заявка самому себе",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/users/{{user_id}}/friend-requests",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"username\",\"password\",\"user_id\",\"friend_access_token\",\"peer_id\",\"peer_username\",\"peer_access_token\",\"outsider_id\",\"outsider_username\",\"outsider_access_token\",\"friend_request_id\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 400\", function () { pm.response.to.have.status(400); });",
+              "pm.test(\"Ошибка SELF_ACTION\", function () { pm.expect(pm.response.json().error.code).to.equal(\"SELF_ACTION\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "58 — Отправка заявки",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/users/{{peer_id}}/friend-requests",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"username\",\"password\",\"user_id\",\"friend_access_token\",\"peer_id\",\"peer_username\",\"peer_access_token\",\"outsider_id\",\"outsider_username\",\"outsider_access_token\",\"friend_request_id\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 201\", function () { pm.response.to.have.status(201); });",
+              "pm.test(\"Заявка ожидает принятия\", function () { pm.expect(pm.response.json().status).to.equal(\"pending\"); });",
+              "if (pm.response.code === 201) pm.collectionVariables.set(\"friend_request_id\", pm.response.json().id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "59 — До принятия друзей нет",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/users/me",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"username\",\"password\",\"user_id\",\"friend_access_token\",\"peer_id\",\"peer_username\",\"peer_access_token\",\"outsider_id\",\"outsider_username\",\"outsider_access_token\",\"friend_request_id\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+              "pm.test(\"Счётчик равен нулю\", function () { pm.expect(pm.response.json().friends_count).to.equal(0); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "60 — Список outgoing",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/friend-requests?direction=outgoing",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"username\",\"password\",\"user_id\",\"friend_access_token\",\"peer_id\",\"peer_username\",\"peer_access_token\",\"outsider_id\",\"outsider_username\",\"outsider_access_token\",\"friend_request_id\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+              "pm.test(\"Своя ожидающая заявка\", function () { const p=pm.response.json(); pm.expect(p.items.length).to.equal(1); pm.expect(p.items[0].id).to.equal(pm.collectionVariables.get(\"friend_request_id\")); pm.expect(p.items[0].user.id).to.equal(pm.collectionVariables.get(\"peer_id\")); pm.expect(p.items[0].user).not.to.have.property(\"email\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "61 — Список incoming",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/friend-requests?direction=incoming",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{peer_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"username\",\"password\",\"user_id\",\"friend_access_token\",\"peer_id\",\"peer_username\",\"peer_access_token\",\"outsider_id\",\"outsider_username\",\"outsider_access_token\",\"friend_request_id\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+              "pm.test(\"Своя ожидающая заявка\", function () { const p=pm.response.json(); pm.expect(p.items.length).to.equal(1); pm.expect(p.items[0].id).to.equal(pm.collectionVariables.get(\"friend_request_id\")); pm.expect(p.items[0].user.id).to.equal(pm.collectionVariables.get(\"user_id\")); pm.expect(p.items[0].user).not.to.have.property(\"email\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "62 — Повторная или встречная заявка",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/users/{{peer_id}}/friend-requests",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"username\",\"password\",\"user_id\",\"friend_access_token\",\"peer_id\",\"peer_username\",\"peer_access_token\",\"outsider_id\",\"outsider_username\",\"outsider_access_token\",\"friend_request_id\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 409\", function () { pm.response.to.have.status(409); });",
+              "pm.test(\"Ошибка REQUEST_ALREADY_EXISTS\", function () { pm.expect(pm.response.json().error.code).to.equal(\"REQUEST_ALREADY_EXISTS\"); });",
+              "pm.test(\"ID существующей заявки\", function () { pm.expect(pm.response.json().error.details.friend_request_id).to.equal(pm.collectionVariables.get(\"friend_request_id\")); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "63 — Повторная или встречная заявка",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/users/{{user_id}}/friend-requests",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{peer_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"username\",\"password\",\"user_id\",\"friend_access_token\",\"peer_id\",\"peer_username\",\"peer_access_token\",\"outsider_id\",\"outsider_username\",\"outsider_access_token\",\"friend_request_id\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 409\", function () { pm.response.to.have.status(409); });",
+              "pm.test(\"Ошибка INCOMING_REQUEST_EXISTS\", function () { pm.expect(pm.response.json().error.code).to.equal(\"INCOMING_REQUEST_EXISTS\"); });",
+              "pm.test(\"ID существующей заявки\", function () { pm.expect(pm.response.json().error.details.friend_request_id).to.equal(pm.collectionVariables.get(\"friend_request_id\")); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "64 — Посторонний не принимает заявку",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/friend-requests/{{friend_request_id}}/accept",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{outsider_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"username\",\"password\",\"user_id\",\"friend_access_token\",\"peer_id\",\"peer_username\",\"peer_access_token\",\"outsider_id\",\"outsider_username\",\"outsider_access_token\",\"friend_request_id\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 404\", function () { pm.response.to.have.status(404); });",
+              "pm.test(\"Ошибка FRIEND_REQUEST_NOT_FOUND\", function () { pm.expect(pm.response.json().error.code).to.equal(\"FRIEND_REQUEST_NOT_FOUND\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "65 — Отправитель не принимает заявку",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/friend-requests/{{friend_request_id}}/accept",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"username\",\"password\",\"user_id\",\"friend_access_token\",\"peer_id\",\"peer_username\",\"peer_access_token\",\"outsider_id\",\"outsider_username\",\"outsider_access_token\",\"friend_request_id\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 403\", function () { pm.response.to.have.status(403); });",
+              "pm.test(\"Ошибка FORBIDDEN\", function () { pm.expect(pm.response.json().error.code).to.equal(\"FORBIDDEN\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "66 — Принятие",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/friend-requests/{{friend_request_id}}/accept",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{peer_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"username\",\"password\",\"user_id\",\"friend_access_token\",\"peer_id\",\"peer_username\",\"peer_access_token\",\"outsider_id\",\"outsider_username\",\"outsider_access_token\",\"friend_request_id\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+              "pm.test(\"Заявка принята\", function () { pm.expect(pm.response.json().status).to.equal(\"accepted\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "67 — Повторное принятие",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/friend-requests/{{friend_request_id}}/accept",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{peer_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"username\",\"password\",\"user_id\",\"friend_access_token\",\"peer_id\",\"peer_username\",\"peer_access_token\",\"outsider_id\",\"outsider_username\",\"outsider_access_token\",\"friend_request_id\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+              "pm.test(\"Заявка принята\", function () { pm.expect(pm.response.json().status).to.equal(\"accepted\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "68 — Счётчик друзей после принятия",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/users/me",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"username\",\"password\",\"user_id\",\"friend_access_token\",\"peer_id\",\"peer_username\",\"peer_access_token\",\"outsider_id\",\"outsider_username\",\"outsider_access_token\",\"friend_request_id\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+              "pm.test(\"Один друг\", function () { pm.expect(pm.response.json().friends_count).to.equal(1); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "69 — Счётчик друзей после принятия",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/users/me",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{peer_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"username\",\"password\",\"user_id\",\"friend_access_token\",\"peer_id\",\"peer_username\",\"peer_access_token\",\"outsider_id\",\"outsider_username\",\"outsider_access_token\",\"friend_request_id\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+              "pm.test(\"Один друг\", function () { pm.expect(pm.response.json().friends_count).to.equal(1); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "70 — Публичный список друзей",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/users/{{user_id}}/friends",
+        "header": [],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"username\",\"password\",\"user_id\",\"friend_access_token\",\"peer_id\",\"peer_username\",\"peer_access_token\",\"outsider_id\",\"outsider_username\",\"outsider_access_token\",\"friend_request_id\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+              "pm.test(\"Друг без закрытых полей\", function () { const p=pm.response.json(); pm.expect(p.items.length).to.equal(1); pm.expect(p.items[0].id).to.equal(pm.collectionVariables.get(\"peer_id\")); pm.expect(p.items[0].avatar_url).to.equal(null); pm.expect(p.items[0]).not.to.have.property(\"email\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "71 — Заявка существующему другу",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/users/{{peer_id}}/friend-requests",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"username\",\"password\",\"user_id\",\"friend_access_token\",\"peer_id\",\"peer_username\",\"peer_access_token\",\"outsider_id\",\"outsider_username\",\"outsider_access_token\",\"friend_request_id\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 409\", function () { pm.response.to.have.status(409); });",
+              "pm.test(\"Ошибка ALREADY_FRIENDS\", function () { pm.expect(pm.response.json().error.code).to.equal(\"ALREADY_FRIENDS\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "72 — Принятую заявку нельзя отменить",
+      "request": {
+        "method": "DELETE",
+        "url": "{{base_url}}/friend-requests/{{friend_request_id}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"username\",\"password\",\"user_id\",\"friend_access_token\",\"peer_id\",\"peer_username\",\"peer_access_token\",\"outsider_id\",\"outsider_username\",\"outsider_access_token\",\"friend_request_id\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 409\", function () { pm.response.to.have.status(409); });",
+              "pm.test(\"Ошибка FRIEND_REQUEST_NOT_PENDING\", function () { pm.expect(pm.response.json().error.code).to.equal(\"FRIEND_REQUEST_NOT_PENDING\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "73 — Удаление друга",
+      "request": {
+        "method": "DELETE",
+        "url": "{{base_url}}/users/me/friends/{{peer_id}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"username\",\"password\",\"user_id\",\"friend_access_token\",\"peer_id\",\"peer_username\",\"peer_access_token\",\"outsider_id\",\"outsider_username\",\"outsider_access_token\",\"friend_request_id\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 204\", function () { pm.response.to.have.status(204); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "74 — Повторное удаление друга",
+      "request": {
+        "method": "DELETE",
+        "url": "{{base_url}}/users/me/friends/{{peer_id}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"username\",\"password\",\"user_id\",\"friend_access_token\",\"peer_id\",\"peer_username\",\"peer_access_token\",\"outsider_id\",\"outsider_username\",\"outsider_access_token\",\"friend_request_id\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 204\", function () { pm.response.to.have.status(204); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "75 — Старая заявка не восстанавливает дружбу",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/friend-requests/{{friend_request_id}}/accept",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{peer_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"username\",\"password\",\"user_id\",\"friend_access_token\",\"peer_id\",\"peer_username\",\"peer_access_token\",\"outsider_id\",\"outsider_username\",\"outsider_access_token\",\"friend_request_id\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 409\", function () { pm.response.to.have.status(409); });",
+              "pm.test(\"Ошибка FRIEND_REQUEST_NOT_PENDING\", function () { pm.expect(pm.response.json().error.code).to.equal(\"FRIEND_REQUEST_NOT_PENDING\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "76 — Счётчик после удаления",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/users/me",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"username\",\"password\",\"user_id\",\"friend_access_token\",\"peer_id\",\"peer_username\",\"peer_access_token\",\"outsider_id\",\"outsider_username\",\"outsider_access_token\",\"friend_request_id\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+              "pm.test(\"Снова ноль друзей\", function () { pm.expect(pm.response.json().friends_count).to.equal(0); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "77 — Счётчик после удаления",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/users/me",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{peer_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"username\",\"password\",\"user_id\",\"friend_access_token\",\"peer_id\",\"peer_username\",\"peer_access_token\",\"outsider_id\",\"outsider_username\",\"outsider_access_token\",\"friend_request_id\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+              "pm.test(\"Снова ноль друзей\", function () { pm.expect(pm.response.json().friends_count).to.equal(0); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "78 — Отправка заявки",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/users/{{peer_id}}/friend-requests",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"username\",\"password\",\"user_id\",\"friend_access_token\",\"peer_id\",\"peer_username\",\"peer_access_token\",\"outsider_id\",\"outsider_username\",\"outsider_access_token\",\"friend_request_id\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 201\", function () { pm.response.to.have.status(201); });",
+              "pm.test(\"Заявка ожидает принятия\", function () { pm.expect(pm.response.json().status).to.equal(\"pending\"); });",
+              "if (pm.response.code === 201) pm.collectionVariables.set(\"friend_request_id\", pm.response.json().id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "79 — Отмена исходящей",
+      "request": {
+        "method": "DELETE",
+        "url": "{{base_url}}/friend-requests/{{friend_request_id}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"username\",\"password\",\"user_id\",\"friend_access_token\",\"peer_id\",\"peer_username\",\"peer_access_token\",\"outsider_id\",\"outsider_username\",\"outsider_access_token\",\"friend_request_id\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 204\", function () { pm.response.to.have.status(204); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "80 — Повторный отказ или отмена",
+      "request": {
+        "method": "DELETE",
+        "url": "{{base_url}}/friend-requests/{{friend_request_id}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"username\",\"password\",\"user_id\",\"friend_access_token\",\"peer_id\",\"peer_username\",\"peer_access_token\",\"outsider_id\",\"outsider_username\",\"outsider_access_token\",\"friend_request_id\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 204\", function () { pm.response.to.have.status(204); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "81 — Закрытая заявка не принимается",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/friend-requests/{{friend_request_id}}/accept",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{peer_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"username\",\"password\",\"user_id\",\"friend_access_token\",\"peer_id\",\"peer_username\",\"peer_access_token\",\"outsider_id\",\"outsider_username\",\"outsider_access_token\",\"friend_request_id\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 409\", function () { pm.response.to.have.status(409); });",
+              "pm.test(\"Ошибка FRIEND_REQUEST_NOT_PENDING\", function () { pm.expect(pm.response.json().error.code).to.equal(\"FRIEND_REQUEST_NOT_PENDING\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "82 — Отправка заявки",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/users/{{peer_id}}/friend-requests",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"username\",\"password\",\"user_id\",\"friend_access_token\",\"peer_id\",\"peer_username\",\"peer_access_token\",\"outsider_id\",\"outsider_username\",\"outsider_access_token\",\"friend_request_id\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 201\", function () { pm.response.to.have.status(201); });",
+              "pm.test(\"Заявка ожидает принятия\", function () { pm.expect(pm.response.json().status).to.equal(\"pending\"); });",
+              "if (pm.response.code === 201) pm.collectionVariables.set(\"friend_request_id\", pm.response.json().id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "83 — Отказ получателя",
+      "request": {
+        "method": "DELETE",
+        "url": "{{base_url}}/friend-requests/{{friend_request_id}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{peer_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"username\",\"password\",\"user_id\",\"friend_access_token\",\"peer_id\",\"peer_username\",\"peer_access_token\",\"outsider_id\",\"outsider_username\",\"outsider_access_token\",\"friend_request_id\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 204\", function () { pm.response.to.have.status(204); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "84 — Повторный отказ или отмена",
+      "request": {
+        "method": "DELETE",
+        "url": "{{base_url}}/friend-requests/{{friend_request_id}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{peer_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"username\",\"password\",\"user_id\",\"friend_access_token\",\"peer_id\",\"peer_username\",\"peer_access_token\",\"outsider_id\",\"outsider_username\",\"outsider_access_token\",\"friend_request_id\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 204\", function () { pm.response.to.have.status(204); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "85 — Закрытая заявка не принимается",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/friend-requests/{{friend_request_id}}/accept",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{peer_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"username\",\"password\",\"user_id\",\"friend_access_token\",\"peer_id\",\"peer_username\",\"peer_access_token\",\"outsider_id\",\"outsider_username\",\"outsider_access_token\",\"friend_request_id\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 409\", function () { pm.response.to.have.status(409); });",
+              "pm.test(\"Ошибка FRIEND_REQUEST_NOT_PENDING\", function () { pm.expect(pm.response.json().error.code).to.equal(\"FRIEND_REQUEST_NOT_PENDING\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "86 — Ожидающих заявок нет",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/friend-requests?direction=outgoing",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"username\",\"password\",\"user_id\",\"friend_access_token\",\"peer_id\",\"peer_username\",\"peer_access_token\",\"outsider_id\",\"outsider_username\",\"outsider_access_token\",\"friend_request_id\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+              "pm.test(\"Пустой список\", function () { pm.expect(pm.response.json().items).to.deep.equal([]); pm.expect(pm.response.json().next_cursor).to.equal(null); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "87 — Список заявок без авторизации",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/friend-requests?direction=incoming",
+        "header": [],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"username\",\"password\",\"user_id\",\"friend_access_token\",\"peer_id\",\"peer_username\",\"peer_access_token\",\"outsider_id\",\"outsider_username\",\"outsider_access_token\",\"friend_request_id\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 401\", function () { pm.response.to.have.status(401); });",
+              "pm.test(\"Ошибка UNAUTHORIZED\", function () { pm.expect(pm.response.json().error.code).to.equal(\"UNAUTHORIZED\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "88 — Неверное направление",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/friend-requests?direction=all",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"username\",\"password\",\"user_id\",\"friend_access_token\",\"peer_id\",\"peer_username\",\"peer_access_token\",\"outsider_id\",\"outsider_username\",\"outsider_access_token\",\"friend_request_id\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 400\", function () { pm.response.to.have.status(400); });",
+              "pm.test(\"Ошибка INVALID_DIRECTION\", function () { pm.expect(pm.response.json().error.code).to.equal(\"INVALID_DIRECTION\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "89 — Неверный курсор заявок",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/friend-requests?direction=incoming&cursor=broken",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"username\",\"password\",\"user_id\",\"friend_access_token\",\"peer_id\",\"peer_username\",\"peer_access_token\",\"outsider_id\",\"outsider_username\",\"outsider_access_token\",\"friend_request_id\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 400\", function () { pm.response.to.have.status(400); });",
+              "pm.test(\"Ошибка INVALID_CURSOR\", function () { pm.expect(pm.response.json().error.code).to.equal(\"INVALID_CURSOR\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "90 — Неверный лимит друзей",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/users/me/friends?limit=21",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"username\",\"password\",\"user_id\",\"friend_access_token\",\"peer_id\",\"peer_username\",\"peer_access_token\",\"outsider_id\",\"outsider_username\",\"outsider_access_token\",\"friend_request_id\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 400\", function () { pm.response.to.have.status(400); });",
+              "pm.test(\"Ошибка INVALID_LIMIT\", function () { pm.expect(pm.response.json().error.code).to.equal(\"INVALID_LIMIT\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "91 — Удаление себя из друзей",
+      "request": {
+        "method": "DELETE",
+        "url": "{{base_url}}/users/me/friends/{{user_id}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"username\",\"password\",\"user_id\",\"friend_access_token\",\"peer_id\",\"peer_username\",\"peer_access_token\",\"outsider_id\",\"outsider_username\",\"outsider_access_token\",\"friend_request_id\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 400\", function () { pm.response.to.have.status(400); });",
+              "pm.test(\"Ошибка SELF_ACTION\", function () { pm.expect(pm.response.json().error.code).to.equal(\"SELF_ACTION\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "92 — Посторонний не отменяет заявку",
+      "request": {
+        "method": "DELETE",
+        "url": "{{base_url}}/friend-requests/{{friend_request_id}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{outsider_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"username\",\"password\",\"user_id\",\"friend_access_token\",\"peer_id\",\"peer_username\",\"peer_access_token\",\"outsider_id\",\"outsider_username\",\"outsider_access_token\",\"friend_request_id\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 404\", function () { pm.response.to.have.status(404); });",
+              "pm.test(\"Ошибка FRIEND_REQUEST_NOT_FOUND\", function () { pm.expect(pm.response.json().error.code).to.equal(\"FRIEND_REQUEST_NOT_FOUND\"); });"
             ]
           }
         }

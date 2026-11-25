@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/alina965/pLaNtS/user-service/internal/domain"
+	"github.com/alina965/user-service/internal/domain"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -187,7 +187,7 @@ func writeServiceError(c *gin.Context, err error) {
 	case errors.Is(err, domain.ErrInvalidLimit):
 		writeError(c, http.StatusBadRequest, "INVALID_LIMIT", "Размер страницы должен быть от 1 до 20")
 	case errors.Is(err, domain.ErrInvalidCursor):
-		writeError(c, http.StatusBadRequest, "INVALID_CURSOR", "Некорректный курсор поиска")
+		writeError(c, http.StatusBadRequest, "INVALID_CURSOR", "Некорректный курсор страницы")
 	case errors.Is(err, domain.ErrLoginLocked):
 		writeError(c, http.StatusTooManyRequests, "LOGIN_LOCKED", "Вход по этому идентификатору заблокирован на 1 час")
 	case errors.Is(err, domain.ErrInvalidLogin):

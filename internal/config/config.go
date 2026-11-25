@@ -11,7 +11,7 @@ import (
 
 const (
 	defaultAddress         = ":8080"
-	defaultAccessTokenTTL  = time.Minute
+	defaultAccessTokenTTL  = time.Minute * 15
 	defaultRefreshTokenTTL = 7 * 24 * time.Hour
 	defaultBcryptCost      = 10
 )

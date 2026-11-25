@@ -1,4 +1,4 @@
-module github.com/alina965/pLaNtS/user-service
+module github.com/alina965/user-service
 
 go 1.26
 
