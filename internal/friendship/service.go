@@ -17,6 +17,8 @@ type Repository interface {
 	Remove(context.Context, uuid.UUID, uuid.UUID) error
 	Requests(context.Context, uuid.UUID, string, int, *domain.FriendRequestsCursor) ([]domain.FriendRequestItem, error)
 	Friends(context.Context, uuid.UUID, uuid.UUID, int, *domain.FriendsCursor) ([]domain.FriendRow, error)
+	SetBlock(context.Context, uuid.UUID, uuid.UUID, bool) error
+	Blocks(context.Context, uuid.UUID, int, *domain.BlocksCursor) ([]domain.FriendRow, error)
 }
 
 type Service struct {
@@ -61,6 +63,46 @@ func (s *Service) Remove(ctx context.Context, actor, friend uuid.UUID) error {
 		return domain.ErrSelfFriendship
 	}
 	return storageError(s.repository.Remove(ctx, actor, friend))
+}
+
+func (s *Service) SetBlock(ctx context.Context, actor, target uuid.UUID, enabled bool) error {
+	if actor == target {
+		return domain.ErrSelfFriendship
+	}
+	return storageError(s.repository.SetBlock(ctx, actor, target, enabled))
+}
+
+func (s *Service) Blocks(ctx context.Context, userID uuid.UUID, limit int, cursor string) (*domain.UserSearchResponse, error) {
+	if limit < 1 || limit > 20 {
+		return nil, domain.ErrInvalidLimit
+	}
+	var after *domain.BlocksCursor
+	if cursor != "" {
+		after = &domain.BlocksCursor{}
+		if err := decodeCursor(cursor, after); err != nil {
+			return nil, err
+		}
+		if after.Version != 1 || after.UserID != userID || after.Name == "" || after.ID == uuid.Nil {
+			return nil, domain.ErrInvalidCursor
+		}
+	}
+	rows, err := s.repository.Blocks(ctx, userID, limit+1, after)
+	if err != nil {
+		return nil, storageError(err)
+	}
+	response := &domain.UserSearchResponse{Items: make([]domain.UserPreview, 0)}
+	if len(rows) > limit {
+		last := rows[limit-1]
+		response.NextCursor, err = encodeCursor(domain.BlocksCursor{Version: 1, UserID: userID, Name: last.SortName, ID: last.ID})
+		if err != nil {
+			return nil, err
+		}
+		rows = rows[:limit]
+	}
+	for _, row := range rows {
+		response.Items = append(response.Items, row.UserPreview)
+	}
+	return response, nil
 }
 
 func decodeCursor(cursor string, value any) error {

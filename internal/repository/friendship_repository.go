@@ -177,6 +177,57 @@ func (r *FriendshipRepository) Remove(ctx context.Context, actor, friend uuid.UU
 	return tx.Commit(ctx)
 }
 
+func (r *FriendshipRepository) SetBlock(ctx context.Context, blocker, blocked uuid.UUID, enabled bool) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if err := lockFriendPair(ctx, tx, blocker, blocked); err != nil {
+		return err
+	}
+	if enabled {
+		_, err = tx.Exec(ctx, `INSERT INTO user_blocks (blocker_id,blocked_id)
+			VALUES ($1,$2) ON CONFLICT DO NOTHING`, blocker, blocked)
+		if err != nil {
+			return err
+		}
+		_, err = tx.Exec(ctx, `UPDATE friend_requests SET status='cancelled',responded_at=now()
+			WHERE status='pending' AND LEAST(sender_id,recipient_id)=LEAST($1::uuid,$2::uuid)
+			AND GREATEST(sender_id,recipient_id)=GREATEST($1::uuid,$2::uuid)`, blocker, blocked)
+	} else {
+		_, err = tx.Exec(ctx, `DELETE FROM user_blocks WHERE blocker_id=$1 AND blocked_id=$2`, blocker, blocked)
+	}
+	if err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func (r *FriendshipRepository) Blocks(ctx context.Context, userID uuid.UUID, limit int, after *domain.BlocksCursor) ([]domain.FriendRow, error) {
+	name, id := "", uuid.Nil
+	if after != nil {
+		name, id = after.Name, after.ID
+	}
+	rows, err := r.db.Query(ctx, `SELECT u.id,u.username,lower(u.username)
+		FROM user_blocks b JOIN users u ON u.id=b.blocked_id
+		WHERE b.blocker_id=$1 AND (lower(u.username),u.id)>($2::text,$3::uuid)
+		ORDER BY lower(u.username),u.id LIMIT $4`, userID, name, id, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := make([]domain.FriendRow, 0)
+	for rows.Next() {
+		var item domain.FriendRow
+		if err := rows.Scan(&item.ID, &item.Username, &item.SortName); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
 func (r *FriendshipRepository) Requests(ctx context.Context, userID uuid.UUID, direction string, limit int, after *domain.FriendRequestsCursor) ([]domain.FriendRequestItem, error) {
 	var afterTime any
 	afterID := uuid.Nil

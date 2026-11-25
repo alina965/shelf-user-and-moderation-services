@@ -54,6 +54,9 @@ func New(config *config.Config) (*App, error) {
 	router.DELETE("/friend-requests/:id", api.AuthMiddleware(jwtService, userService), friendshipHandler.Dismiss)
 	router.DELETE("/users/me/friends/:user_id", api.AuthMiddleware(jwtService, userService), friendshipHandler.Remove)
 	router.GET("/users/:id/friends", api.OptionalAuthMiddleware(jwtService, userService), friendshipHandler.Friends)
+	router.PUT("/users/me/blocks/:user_id", api.AuthMiddleware(jwtService, userService), friendshipHandler.Block)
+	router.DELETE("/users/me/blocks/:user_id", api.AuthMiddleware(jwtService, userService), friendshipHandler.Unblock)
+	router.GET("/users/me/blocks", api.AuthMiddleware(jwtService, userService), friendshipHandler.Blocks)
 
 	return &App{db: db, server: &http.Server{Addr: config.Addr, Handler: router}}, nil
 }

@@ -2,7 +2,7 @@
   "info": {
     "name": "User Service",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "description": "Запустите сервис с PostgreSQL и применёнными миграциями. Импортируйте коллекцию и запустите все запросы по порядку через Run collection. base_url по умолчанию http://localhost:8080, без /api/v1 для прямого обращения к сервису. Каждый полный запуск создаёт нового тестового пользователя; пользователь остаётся в БД. Токены сохраняются автоматически. Только текущие реализованные функции: регистрация, вход, профиль, refresh. Перед каждым запросом тестовые данные и токены копируются из переменных коллекции в локальные, чтобы environment и data не переопределяли их. Запускайте всю коллекцию с первого запроса по порядку. Запросы 13–18 проверяют выход только с первого устройства, отзыв access/refresh и сохранение доступа на втором. Запросы 19–33 проверяют счётчик ошибок и блокировку входа. Запускайте полный набор с регистрации. Запросы 34–45 проверяют публичный поиск, сортировку, курсоры и ошибки ввода. Запросы 46–51 проверяют просмотр профиля, отсутствие закрытых полей и проверку переданной сессии. Запросы 52 и далее проверяют полный цикл заявок и дружбы: повторы, встречные заявки, права участников, принятие, отказ, отмену, удаление и счётчики."
+    "description": "Импортируйте коллекцию и запускайте все запросы по порядку через Run collection. Сервис должен работать с PostgreSQL и применённой migrations/000001_init.sql. base_url по умолчанию http://localhost:8080, без /api/v1. Каждый полный запуск создаёт новые тестовые аккаунты, которые остаются в БД. Токены и курсоры сохраняются автоматически; тестовые переменные копируются в локальную область, чтобы environment/data не переопределяли их. Запросы 1–51 проверяют регистрацию, вход, профили, refresh, выход, блокировку входа и поиск. 52–92 — заявки и дружбу. 93 и далее — блокировки, независимое снятие встречной блокировки, отмену заявок, сохранение дружбы, пагинацию и авторизацию."
   },
   "variable": [
     {
@@ -79,6 +79,10 @@
     },
     {
       "key": "friend_request_id",
+      "value": ""
+    },
+    {
+      "key": "blocks_cursor",
       "value": ""
     }
   ],
@@ -3826,6 +3830,1842 @@
             "exec": [
               "pm.test(\"Статус 404\", function () { pm.response.to.have.status(404); });",
               "pm.test(\"Ошибка FRIEND_REQUEST_NOT_FOUND\", function () { pm.expect(pm.response.json().error.code).to.equal(\"FRIEND_REQUEST_NOT_FOUND\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "93 — Собственные блокировки",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/users/me/blocks",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+              "pm.test(\"Нет собственных блокировок\", function () { const p=pm.response.json(); pm.expect(p.items).to.deep.equal([]); pm.expect(p.next_cursor).to.equal(null); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "94 — Нельзя заблокировать себя",
+      "request": {
+        "method": "PUT",
+        "url": "{{base_url}}/users/me/blocks/{{user_id}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 400\", function () { pm.response.to.have.status(400); });",
+              "pm.test(\"Ошибка SELF_ACTION\", function () { pm.expect(pm.response.json().error.code).to.equal(\"SELF_ACTION\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "95 — Блокировка",
+      "request": {
+        "method": "PUT",
+        "url": "{{base_url}}/users/me/blocks/{{peer_id}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 204\", function () { pm.response.to.have.status(204); });",
+              "pm.test(\"Ответ пуст\", function () { pm.expect(pm.response.text()).to.equal(\"\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "96 — Блокировка",
+      "request": {
+        "method": "PUT",
+        "url": "{{base_url}}/users/me/blocks/{{peer_id}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 204\", function () { pm.response.to.have.status(204); });",
+              "pm.test(\"Ответ пуст\", function () { pm.expect(pm.response.text()).to.equal(\"\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "97 — Собственные блокировки",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/users/me/blocks",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+              "pm.test(\"Одна публичная карточка\", function () { const p=pm.response.json(); pm.expect(p.items.length).to.equal(1); pm.expect(p.items[0].id).to.equal(pm.collectionVariables.get(\"peer_id\")); pm.expect(p.items[0]).to.have.all.keys(\"id\",\"username\",\"avatar_url\"); pm.expect(p.items[0].avatar_url).to.equal(null); });",
+              "pm.test(\"Кеширование отключено\", function () { pm.expect(pm.response.headers.get(\"Cache-Control\")).to.equal(\"no-store\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "98 — Собственные блокировки",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/users/me/blocks",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{peer_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+              "pm.test(\"Нет собственных блокировок\", function () { const p=pm.response.json(); pm.expect(p.items).to.deep.equal([]); pm.expect(p.next_cursor).to.equal(null); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "99 — Блокировка запрещает заявку в обе стороны",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/users/{{peer_id}}/friend-requests",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 403\", function () { pm.response.to.have.status(403); });",
+              "pm.test(\"Ошибка INTERACTION_BLOCKED\", function () { pm.expect(pm.response.json().error.code).to.equal(\"INTERACTION_BLOCKED\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "100 — Блокировка запрещает заявку в обе стороны",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/users/{{user_id}}/friend-requests",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{peer_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 403\", function () { pm.response.to.have.status(403); });",
+              "pm.test(\"Ошибка INTERACTION_BLOCKED\", function () { pm.expect(pm.response.json().error.code).to.equal(\"INTERACTION_BLOCKED\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "101 — Блокировка",
+      "request": {
+        "method": "PUT",
+        "url": "{{base_url}}/users/me/blocks/{{user_id}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{peer_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 204\", function () { pm.response.to.have.status(204); });",
+              "pm.test(\"Ответ пуст\", function () { pm.expect(pm.response.text()).to.equal(\"\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "102 — Разблокировка",
+      "request": {
+        "method": "DELETE",
+        "url": "{{base_url}}/users/me/blocks/{{peer_id}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 204\", function () { pm.response.to.have.status(204); });",
+              "pm.test(\"Ответ пуст\", function () { pm.expect(pm.response.text()).to.equal(\"\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "103 — Собственные блокировки",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/users/me/blocks",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+              "pm.test(\"Нет собственных блокировок\", function () { const p=pm.response.json(); pm.expect(p.items).to.deep.equal([]); pm.expect(p.next_cursor).to.equal(null); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "104 — Собственные блокировки",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/users/me/blocks",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{peer_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+              "pm.test(\"Встречная блокировка сохранилась\", function () { pm.expect(pm.response.json().items[0].id).to.equal(pm.collectionVariables.get(\"user_id\")); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "105 — Одной оставшейся блокировки достаточно",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/users/{{peer_id}}/friend-requests",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 403\", function () { pm.response.to.have.status(403); });",
+              "pm.test(\"Ошибка INTERACTION_BLOCKED\", function () { pm.expect(pm.response.json().error.code).to.equal(\"INTERACTION_BLOCKED\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "106 — Разблокировка",
+      "request": {
+        "method": "DELETE",
+        "url": "{{base_url}}/users/me/blocks/{{user_id}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{peer_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 204\", function () { pm.response.to.have.status(204); });",
+              "pm.test(\"Ответ пуст\", function () { pm.expect(pm.response.text()).to.equal(\"\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "107 — Новая заявка",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/users/{{peer_id}}/friend-requests",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 201\", function () { pm.response.to.have.status(201); });",
+              "if (pm.response.code === 201) pm.collectionVariables.set(\"friend_request_id\", pm.response.json().id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "108 — Блокировка",
+      "request": {
+        "method": "PUT",
+        "url": "{{base_url}}/users/me/blocks/{{user_id}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{peer_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 204\", function () { pm.response.to.have.status(204); });",
+              "pm.test(\"Ответ пуст\", function () { pm.expect(pm.response.text()).to.equal(\"\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "109 — Блокировка убрала ожидающую заявку",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/friend-requests?direction=outgoing",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+              "pm.test(\"Ожидающих заявок нет\", function () { pm.expect(pm.response.json().items).to.deep.equal([]); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "110 — Блокировка убрала ожидающую заявку",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/friend-requests?direction=incoming",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{peer_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+              "pm.test(\"Ожидающих заявок нет\", function () { pm.expect(pm.response.json().items).to.deep.equal([]); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "111 — Заявка не принимается при блокировке",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/friend-requests/{{friend_request_id}}/accept",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{peer_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 403\", function () { pm.response.to.have.status(403); });",
+              "pm.test(\"Ошибка INTERACTION_BLOCKED\", function () { pm.expect(pm.response.json().error.code).to.equal(\"INTERACTION_BLOCKED\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "112 — Разблокировка",
+      "request": {
+        "method": "DELETE",
+        "url": "{{base_url}}/users/me/blocks/{{user_id}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{peer_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 204\", function () { pm.response.to.have.status(204); });",
+              "pm.test(\"Ответ пуст\", function () { pm.expect(pm.response.text()).to.equal(\"\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "113 — Разблокировка не восстановила заявку",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/friend-requests/{{friend_request_id}}/accept",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{peer_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 409\", function () { pm.response.to.have.status(409); });",
+              "pm.test(\"Ошибка FRIEND_REQUEST_NOT_PENDING\", function () { pm.expect(pm.response.json().error.code).to.equal(\"FRIEND_REQUEST_NOT_PENDING\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "114 — Новая заявка",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/users/{{user_id}}/friend-requests",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{peer_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 201\", function () { pm.response.to.have.status(201); });",
+              "if (pm.response.code === 201) pm.collectionVariables.set(\"friend_request_id\", pm.response.json().id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "115 — Блокировка",
+      "request": {
+        "method": "PUT",
+        "url": "{{base_url}}/users/me/blocks/{{user_id}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{peer_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 204\", function () { pm.response.to.have.status(204); });",
+              "pm.test(\"Ответ пуст\", function () { pm.expect(pm.response.text()).to.equal(\"\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "116 — Разблокировка",
+      "request": {
+        "method": "DELETE",
+        "url": "{{base_url}}/users/me/blocks/{{user_id}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{peer_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 204\", function () { pm.response.to.have.status(204); });",
+              "pm.test(\"Ответ пуст\", function () { pm.expect(pm.response.text()).to.equal(\"\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "117 — Исходящая заявка тоже отменена блокировкой",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/friend-requests/{{friend_request_id}}/accept",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 409\", function () { pm.response.to.have.status(409); });",
+              "pm.test(\"Ошибка FRIEND_REQUEST_NOT_PENDING\", function () { pm.expect(pm.response.json().error.code).to.equal(\"FRIEND_REQUEST_NOT_PENDING\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "118 — Новая заявка",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/users/{{peer_id}}/friend-requests",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 201\", function () { pm.response.to.have.status(201); });",
+              "if (pm.response.code === 201) pm.collectionVariables.set(\"friend_request_id\", pm.response.json().id);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "119 — Принятие новой заявки",
+      "request": {
+        "method": "POST",
+        "url": "{{base_url}}/friend-requests/{{friend_request_id}}/accept",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{peer_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "120 — Блокировка",
+      "request": {
+        "method": "PUT",
+        "url": "{{base_url}}/users/me/blocks/{{peer_id}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 204\", function () { pm.response.to.have.status(204); });",
+              "pm.test(\"Ответ пуст\", function () { pm.expect(pm.response.text()).to.equal(\"\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "121 — Блокировка сохранила дружбу",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/users/me",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+              "pm.test(\"Друг остался в счётчике\", function () { pm.expect(pm.response.json().friends_count).to.equal(1); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "122 — Блокировка сохранила дружбу",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/users/me",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{peer_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+              "pm.test(\"Друг остался в счётчике\", function () { pm.expect(pm.response.json().friends_count).to.equal(1); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "123 — Публичный профиль доступен при блокировке",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/users/{{peer_id}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+              "pm.test(\"Профиль открыт\", function () { pm.expect(pm.response.json().is_private).to.equal(false); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "124 — Разблокировка",
+      "request": {
+        "method": "DELETE",
+        "url": "{{base_url}}/users/me/blocks/{{peer_id}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 204\", function () { pm.response.to.have.status(204); });",
+              "pm.test(\"Ответ пуст\", function () { pm.expect(pm.response.text()).to.equal(\"\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "125 — Дружба осталась после разблокировки",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/users/me/friends",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+              "pm.test(\"Друг сохранился\", function () { pm.expect(pm.response.json().items[0].id).to.equal(pm.collectionVariables.get(\"peer_id\")); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "126 — Очистка дружбы",
+      "request": {
+        "method": "DELETE",
+        "url": "{{base_url}}/users/me/friends/{{peer_id}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 204\", function () { pm.response.to.have.status(204); });",
+              "pm.test(\"Ответ пуст\", function () { pm.expect(pm.response.text()).to.equal(\"\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "127 — Блокировка",
+      "request": {
+        "method": "PUT",
+        "url": "{{base_url}}/users/me/blocks/{{peer_id}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 204\", function () { pm.response.to.have.status(204); });",
+              "pm.test(\"Ответ пуст\", function () { pm.expect(pm.response.text()).to.equal(\"\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "128 — Блокировка",
+      "request": {
+        "method": "PUT",
+        "url": "{{base_url}}/users/me/blocks/{{outsider_id}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 204\", function () { pm.response.to.have.status(204); });",
+              "pm.test(\"Ответ пуст\", function () { pm.expect(pm.response.text()).to.equal(\"\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "129 — Собственные блокировки",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/users/me/blocks?limit=1",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+              "pm.test(\"Первая страница\", function () { pm.expect(pm.response.json().items.length).to.equal(1); pm.expect(pm.response.json().next_cursor).to.be.a(\"string\").and.not.empty; });",
+              "if (pm.response.code === 200) pm.collectionVariables.set(\"blocks_cursor\", pm.response.json().next_cursor);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "130 — Собственные блокировки",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/users/me/blocks?limit=1&cursor={{blocks_cursor}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+              "pm.test(\"Последняя страница\", function () { pm.expect(pm.response.json().items.length).to.equal(1); pm.expect(pm.response.json().next_cursor).to.equal(null); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "131 — Чужой курсор блокировок не принимается",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/users/me/blocks?cursor={{blocks_cursor}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{peer_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 400\", function () { pm.response.to.have.status(400); });",
+              "pm.test(\"Ошибка INVALID_CURSOR\", function () { pm.expect(pm.response.json().error.code).to.equal(\"INVALID_CURSOR\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "132 — Неверный лимит блокировок",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/users/me/blocks?limit=21",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 400\", function () { pm.response.to.have.status(400); });",
+              "pm.test(\"Ошибка INVALID_LIMIT\", function () { pm.expect(pm.response.json().error.code).to.equal(\"INVALID_LIMIT\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "133 — Неверный курсор блокировок",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/users/me/blocks?cursor=broken",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 400\", function () { pm.response.to.have.status(400); });",
+              "pm.test(\"Ошибка INVALID_CURSOR\", function () { pm.expect(pm.response.json().error.code).to.equal(\"INVALID_CURSOR\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "134 — Блокировки требуют входа",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/users/me/blocks",
+        "header": [],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 401\", function () { pm.response.to.have.status(401); });",
+              "pm.test(\"Ошибка UNAUTHORIZED\", function () { pm.expect(pm.response.json().error.code).to.equal(\"UNAUTHORIZED\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "135 — Блокировки требуют входа",
+      "request": {
+        "method": "PUT",
+        "url": "{{base_url}}/users/me/blocks/{{peer_id}}",
+        "header": [],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 401\", function () { pm.response.to.have.status(401); });",
+              "pm.test(\"Ошибка UNAUTHORIZED\", function () { pm.expect(pm.response.json().error.code).to.equal(\"UNAUTHORIZED\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "136 — Блокировки требуют входа",
+      "request": {
+        "method": "DELETE",
+        "url": "{{base_url}}/users/me/blocks/{{peer_id}}",
+        "header": [],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 401\", function () { pm.response.to.have.status(401); });",
+              "pm.test(\"Ошибка UNAUTHORIZED\", function () { pm.expect(pm.response.json().error.code).to.equal(\"UNAUTHORIZED\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "137 — Неверный ID для блокировки",
+      "request": {
+        "method": "PUT",
+        "url": "{{base_url}}/users/me/blocks/not-a-uuid",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 404\", function () { pm.response.to.have.status(404); });",
+              "pm.test(\"Ошибка PROFILE_NOT_FOUND\", function () { pm.expect(pm.response.json().error.code).to.equal(\"PROFILE_NOT_FOUND\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "138 — Неизвестный пользователь",
+      "request": {
+        "method": "PUT",
+        "url": "{{base_url}}/users/me/blocks/00000000-0000-4000-8000-000000000001",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 404\", function () { pm.response.to.have.status(404); });",
+              "pm.test(\"Ошибка PROFILE_NOT_FOUND\", function () { pm.expect(pm.response.json().error.code).to.equal(\"PROFILE_NOT_FOUND\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "139 — Разблокировка",
+      "request": {
+        "method": "DELETE",
+        "url": "{{base_url}}/users/me/blocks/{{peer_id}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 204\", function () { pm.response.to.have.status(204); });",
+              "pm.test(\"Ответ пуст\", function () { pm.expect(pm.response.text()).to.equal(\"\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "140 — Разблокировка",
+      "request": {
+        "method": "DELETE",
+        "url": "{{base_url}}/users/me/blocks/{{peer_id}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 204\", function () { pm.response.to.have.status(204); });",
+              "pm.test(\"Ответ пуст\", function () { pm.expect(pm.response.text()).to.equal(\"\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "141 — Разблокировка",
+      "request": {
+        "method": "DELETE",
+        "url": "{{base_url}}/users/me/blocks/{{outsider_id}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 204\", function () { pm.response.to.have.status(204); });",
+              "pm.test(\"Ответ пуст\", function () { pm.expect(pm.response.text()).to.equal(\"\"); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "142 — Собственные блокировки",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/users/me/blocks",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"password\", \"email\", \"username\", \"user_id\", \"access_token\", \"refresh_token\", \"old_refresh_token\", \"second_access_token\", \"second_refresh_token\", \"search_cursor\", \"friend_access_token\", \"peer_id\", \"peer_username\", \"peer_access_token\", \"outsider_id\", \"outsider_username\", \"outsider_access_token\", \"friend_request_id\", \"blocks_cursor\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+              "pm.test(\"Нет собственных блокировок\", function () { const p=pm.response.json(); pm.expect(p.items).to.deep.equal([]); pm.expect(p.next_cursor).to.equal(null); });"
             ]
           }
         }

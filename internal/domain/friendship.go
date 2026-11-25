@@ -63,3 +63,10 @@ type FriendRow struct {
 	UserPreview
 	SortName string
 }
+
+type BlocksCursor struct {
+	Version int       `json:"v"`
+	UserID  uuid.UUID `json:"user_id"`
+	Name    string    `json:"name"`
+	ID      uuid.UUID `json:"id"`
+}

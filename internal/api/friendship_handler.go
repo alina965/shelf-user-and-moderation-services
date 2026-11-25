@@ -17,6 +17,8 @@ type FriendshipService interface {
 	Remove(context.Context, uuid.UUID, uuid.UUID) error
 	Requests(context.Context, uuid.UUID, string, int, string) (*domain.FriendRequestsResponse, error)
 	Friends(context.Context, uuid.UUID, uuid.UUID, int, string) (*domain.UserSearchResponse, error)
+	SetBlock(context.Context, uuid.UUID, uuid.UUID, bool) error
+	Blocks(context.Context, uuid.UUID, int, string) (*domain.UserSearchResponse, error)
 }
 
 type FriendshipHandler struct {
@@ -154,6 +156,46 @@ func (h *FriendshipHandler) Friends(c *gin.Context) {
 		return
 	}
 	response, err := h.service.Friends(c.Request.Context(), owner, viewer, limit, c.Query("cursor"))
+	if err != nil {
+		writeFriendshipError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, response)
+}
+
+func (h *FriendshipHandler) Block(c *gin.Context) { h.setBlock(c, true) }
+
+func (h *FriendshipHandler) Unblock(c *gin.Context) { h.setBlock(c, false) }
+
+func (h *FriendshipHandler) setBlock(c *gin.Context, enabled bool) {
+	actor, ok := actorID(c)
+	if !ok {
+		return
+	}
+	target, err := uuid.Parse(c.Param("user_id"))
+	if err != nil || target == uuid.Nil {
+		writeServiceError(c, domain.ErrProfileNotFound)
+		return
+	}
+	if err := h.service.SetBlock(c.Request.Context(), actor, target, enabled); err != nil {
+		writeFriendshipError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func (h *FriendshipHandler) Blocks(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
+	actor, ok := actorID(c)
+	if !ok {
+		return
+	}
+	limit, err := pageLimit(c)
+	if err != nil {
+		writeServiceError(c, err)
+		return
+	}
+	response, err := h.service.Blocks(c.Request.Context(), actor, limit, c.Query("cursor"))
 	if err != nil {
 		writeFriendshipError(c, err)
 		return
