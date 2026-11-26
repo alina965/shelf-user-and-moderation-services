@@ -4,8 +4,8 @@ import (
 	"context"
 	"log"
 
-	"github.com/alina965/pLaNtS/user-service/internal/app"
-	"github.com/alina965/pLaNtS/user-service/internal/config"
+	"github.com/alina965/user-service/internal/app"
+	"github.com/alina965/user-service/internal/config"
 )
 
 func main() {

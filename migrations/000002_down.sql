@@ -1,3 +1,9 @@
 DROP TABLE IF EXISTS refresh_tokens;
+DROP TABLE IF EXISTS idempotency_keys;
 DROP TABLE IF EXISTS sessions;
+DROP TABLE IF EXISTS profile_privacy;
+DROP TABLE IF EXISTS login_attempts;
+DROP TABLE IF EXISTS friend_requests;
+DROP TABLE IF EXISTS friendships;
+DROP TABLE IF EXISTS user_blocks;
 DROP TABLE IF EXISTS users;

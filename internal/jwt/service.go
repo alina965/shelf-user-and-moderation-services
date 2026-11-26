@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/alina965/pLaNtS/user-service/internal/domain"
+	"github.com/alina965/user-service/internal/domain"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"

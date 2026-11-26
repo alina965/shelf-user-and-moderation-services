@@ -2,33 +2,35 @@ package auth
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
-	"net/mail"
-	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
 
-	"github.com/alina965/pLaNtS/user-service/internal/domain"
+	"github.com/alina965/user-service/internal/domain"
 
 	"github.com/google/uuid"
 )
 
 type Service struct {
-	hasher                 PasswordHasher
-	jwtService             TokenService
-	userRepository         UserRepository
-	refreshTokenRepository RefreshTokenRepository
-	refreshTokenTTL        time.Duration
+	hasher                  PasswordHasher
+	jwtService              TokenService
+	userRepository          UserRepository
+	refreshTokenRepository  RefreshTokenRepository
+	refreshTokenTTL         time.Duration
+	loginAttemptsRepository LoginAttemptsRepository
 }
 
-func NewAuthService(hasher PasswordHasher, jwtService TokenService, refreshTokenRepository RefreshTokenRepository, userRepository UserRepository, refreshTokenTTL time.Duration) *Service {
+func NewAuthService(hasher PasswordHasher, jwtService TokenService, refreshTokenRepository RefreshTokenRepository, userRepository UserRepository, loginAttemptsRepository LoginAttemptsRepository, refreshTokenTTL time.Duration) *Service {
 	return &Service{
-		hasher:                 hasher,
-		jwtService:             jwtService,
-		refreshTokenRepository: refreshTokenRepository,
-		userRepository:         userRepository,
-		refreshTokenTTL:        refreshTokenTTL,
+		hasher:                  hasher,
+		jwtService:              jwtService,
+		refreshTokenRepository:  refreshTokenRepository,
+		userRepository:          userRepository,
+		refreshTokenTTL:         refreshTokenTTL,
+		loginAttemptsRepository: loginAttemptsRepository,
 	}
 }
 
@@ -42,44 +44,128 @@ type TokenService interface {
 }
 
 type RefreshTokenRepository interface {
-	CreateSession(ctx context.Context, session *domain.Session, token *domain.RefreshToken) error
+	CreateSession(ctx context.Context, session *domain.Session, token *domain.RefreshToken, identifier string) error
 	CheckSession(ctx context.Context, userID, sessionID uuid.UUID) error
 	RevokeSession(ctx context.Context, userID, sessionID uuid.UUID) error
 	FindRefreshTokenByToken(ctx context.Context, token string) (*domain.RefreshToken, error)
 	RotateRefreshToken(ctx context.Context, oldToken string, newToken *domain.RefreshToken) error
 }
 
-type UserRepository interface {
-	CreateUser(ctx context.Context, user *domain.User) error
-	GetUserById(ctx context.Context, id uuid.UUID) (*domain.User, error)
-	GetUserByIdentifier(ctx context.Context, identifier string) (*domain.User, error)
+type LoginAttemptsRepository interface {
+	CheckLocked(ctx context.Context, identifier string) error
+	RecordFailure(ctx context.Context, identifier string) (bool, error)
 }
 
-var usernamePattern = regexp.MustCompile(`^[a-zA-Z0-9_.]{1,32}$`)
+type UserRepository interface {
+	GetProfile(ctx context.Context, ownerID, viewerID uuid.UUID) (*domain.ProfileData, error)
+	SearchUsers(ctx context.Context, query string, limit int, after *domain.UserSearchCursor) ([]domain.UserSearchRow, error)
+	CreateUser(ctx context.Context, user *domain.User) error
+	RegistrationConflicts(ctx context.Context, email, username string) (map[string]string, error)
+	GetUserById(ctx context.Context, id uuid.UUID) (*domain.User, error)
+	GetUserByIdentifier(ctx context.Context, identifier string) (*domain.User, error)
+	GetProfilePrivacy(ctx context.Context, id uuid.UUID) (*domain.ProfilePrivacy, error)
+}
+
+func (s *Service) GetProfile(ctx context.Context, ownerID, viewerID uuid.UUID) (*domain.PublicProfile, error) {
+	profile, err := s.userRepository.GetProfile(ctx, ownerID, viewerID)
+	if err != nil {
+		return nil, err
+	}
+	isOwner := viewerID != uuid.Nil && viewerID == ownerID
+	canSee := func(visibility string) bool {
+		return isOwner || visibility == "public" || (visibility == "friends" && viewerID != uuid.Nil && profile.IsFriend && !profile.IsBlocked)
+	}
+	response := &domain.PublicProfile{
+		UserPreview: domain.UserPreview{ID: profile.ID, Username: profile.Username},
+		IsPrivate:   !canSee(profile.Privacy.ProfileVisibility),
+	}
+	if response.IsPrivate {
+		return response, nil
+	}
+	if canSee(profile.Privacy.DescriptionVisibility) {
+		response.Description = profile.Description
+	}
+	if canSee(profile.Privacy.FriendsVisibility) {
+		response.FriendsCount = &profile.FriendsCount
+	}
+	return response, nil
+}
+
+func (s *Service) SearchUsers(ctx context.Context, query string, limit int, cursor string) (*domain.UserSearchResponse, error) {
+	query = strings.ToLower(strings.TrimSpace(query))
+	if query == "" {
+		return nil, domain.ErrQueryRequired
+	}
+	if utf8.RuneCountInString(query) < 2 {
+		return nil, domain.ErrQueryTooShort
+	}
+	if limit < 1 || limit > 20 {
+		return nil, domain.ErrInvalidLimit
+	}
+	var after *domain.UserSearchCursor
+	if cursor != "" {
+		if len(cursor) > 4096 {
+			return nil, domain.ErrInvalidCursor
+		}
+		data, err := base64.RawURLEncoding.DecodeString(cursor)
+		if err != nil {
+			return nil, domain.ErrInvalidCursor
+		}
+		after = &domain.UserSearchCursor{}
+		if err := json.Unmarshal(data, after); err != nil || after.Version != 1 || after.Query != query ||
+			after.Rank < 0 || after.Rank > 2 || after.Name == "" || after.ID == uuid.Nil {
+			return nil, domain.ErrInvalidCursor
+		}
+	}
+	rows, err := s.userRepository.SearchUsers(ctx, query, limit+1, after)
+	if err != nil {
+		return nil, err
+	}
+	response := &domain.UserSearchResponse{Items: make([]domain.UserPreview, 0)}
+	if len(rows) > limit {
+		last := rows[limit-1]
+		data, err := json.Marshal(domain.UserSearchCursor{Version: 1, Query: query, Rank: last.Rank, Name: last.SortName, ID: last.ID})
+		if err != nil {
+			return nil, err
+		}
+		next := base64.RawURLEncoding.EncodeToString(data)
+		response.NextCursor = &next
+		rows = rows[:limit]
+	}
+	for _, row := range rows {
+		response.Items = append(response.Items, row.UserPreview)
+	}
+	return response, nil
+}
 
 func (s *Service) Register(ctx context.Context, email, password, passwordConfirmation, username string) (*domain.RegisterResponse, error) {
 	email = strings.TrimSpace(email)
 	username = strings.TrimSpace(username)
 
-	address, err := mail.ParseAddress(email)
-	if err != nil || address.Address != email || utf8.RuneCountInString(email) > 254 {
-		return nil, domain.ErrInvalidRegistration
+	fields := registrationErrors(email, username, password, passwordConfirmation)
+	invalid := len(fields) > 0
+	checkEmail, checkUsername := "", ""
+	if fields["email"] == "" {
+		checkEmail = email
 	}
-
-	if !usernamePattern.MatchString(username) ||
-		strings.HasPrefix(username, ".") ||
-		strings.HasSuffix(username, ".") ||
-		strings.Contains(username, "..") {
-		return nil, domain.ErrInvalidRegistration
+	if fields["username"] == "" {
+		checkUsername = username
 	}
-
-	passwordLength := utf8.RuneCountInString(password)
-	if passwordLength < 8 || passwordLength > 32 || password != passwordConfirmation {
-		return nil, domain.ErrInvalidRegistration
+	if checkEmail != "" || checkUsername != "" {
+		conflicts, err := s.userRepository.RegistrationConflicts(ctx, checkEmail, checkUsername)
+		if err != nil {
+			return nil, err
+		}
+		for field, message := range conflicts {
+			fields[field] = message
+		}
 	}
-
-	if len(password) > 72 {
-		return nil, domain.ErrInvalidRegistration
+	if len(fields) > 0 {
+		cause := domain.ErrAccountExists
+		if invalid {
+			cause = domain.ErrInvalidRegistration
+		}
+		return nil, &domain.ValidationError{Cause: cause, Fields: fields}
 	}
 
 	hash, err := s.hasher.Hash(password)
@@ -96,6 +182,19 @@ func (s *Service) Register(ctx context.Context, email, password, passwordConfirm
 	}
 
 	if err := s.userRepository.CreateUser(ctx, user); err != nil {
+		if errors.Is(err, domain.ErrAccountExists) {
+			conflicts, lookupErr := s.userRepository.RegistrationConflicts(ctx, email, username)
+			if lookupErr != nil {
+				return nil, lookupErr
+			}
+			var validation *domain.ValidationError
+			if errors.As(err, &validation) {
+				for field, message := range validation.Fields {
+					conflicts[field] = message
+				}
+			}
+			return nil, &domain.ValidationError{Cause: domain.ErrAccountExists, Fields: conflicts}
+		}
 		return nil, err
 	}
 
@@ -105,22 +204,30 @@ func (s *Service) Register(ctx context.Context, email, password, passwordConfirm
 }
 
 func (s *Service) Login(ctx context.Context, identifier, password string) (*domain.LoginResponse, error) {
-	identifier = strings.TrimSpace(identifier)
+	identifier = strings.ToLower(strings.TrimSpace(identifier))
 
-	if identifier == "" || password == "" {
-		return nil, domain.ErrBadCredentials
+	if fields := loginErrors(identifier, password); len(fields) > 0 {
+		return nil, &domain.ValidationError{Cause: domain.ErrInvalidLogin, Fields: fields}
+	}
+	if err := s.loginAttemptsRepository.CheckLocked(ctx, identifier); err != nil {
+		return nil, err
 	}
 
 	user, err := s.userRepository.GetUserByIdentifier(ctx, identifier)
 	if errors.Is(err, domain.ErrUserNotFound) {
-		return nil, domain.ErrBadCredentials
+		return nil, s.recordLoginFailure(ctx, identifier)
 	}
 	if err != nil {
 		return nil, err
 	}
 
 	if !s.hasher.Compare(user.PasswordHash, password) {
-		return nil, domain.ErrBadCredentials
+		return nil, s.recordLoginFailure(ctx, identifier)
+	}
+
+	profile, err := s.userRepository.GetProfile(ctx, user.ID, user.ID)
+	if err != nil {
+		return nil, err
 	}
 
 	now := time.Now().UTC()
@@ -134,7 +241,7 @@ func (s *Service) Login(ctx context.Context, identifier, password string) (*doma
 	refreshToken.SessionID = session.ID
 	refreshToken.ExpiresAt = session.ExpiresAt
 
-	if err := s.refreshTokenRepository.CreateSession(ctx, session, refreshToken); err != nil {
+	if err := s.refreshTokenRepository.CreateSession(ctx, session, refreshToken, identifier); err != nil {
 		return nil, err
 	}
 
@@ -143,11 +250,25 @@ func (s *Service) Login(ctx context.Context, identifier, password string) (*doma
 		RefreshToken: tokens.RefreshToken,
 		ExpiresIn:    int64(time.Until(tokens.ExpiresAt).Seconds()),
 		User: domain.UserResponse{
-			ID:       user.ID,
-			Email:    user.Email,
-			Username: user.Username,
+			ID:           user.ID,
+			Email:        user.Email,
+			Username:     user.Username,
+			Privacy:      profile.Privacy,
+			Description:  profile.Description,
+			FriendsCount: profile.FriendsCount,
 		},
 	}, nil
+}
+
+func (s *Service) recordLoginFailure(ctx context.Context, identifier string) error {
+	locked, err := s.loginAttemptsRepository.RecordFailure(ctx, identifier)
+	if err != nil {
+		return err
+	}
+	if locked {
+		return domain.ErrLoginLocked
+	}
+	return domain.ErrBadCredentials
 }
 
 func (s *Service) Refresh(ctx context.Context, token string) (*domain.RefreshResponse, error) {
@@ -204,10 +325,18 @@ func (s *Service) GetMe(ctx context.Context, userID uuid.UUID) (*domain.UserResp
 		return nil, err
 	}
 
+	profile, err := s.userRepository.GetProfile(ctx, userID, userID)
+	if err != nil {
+		return nil, err
+	}
+
 	return &domain.UserResponse{
-		ID:       user.ID,
-		Email:    user.Email,
-		Username: user.Username,
+		ID:           user.ID,
+		Email:        user.Email,
+		Username:     user.Username,
+		Privacy:      profile.Privacy,
+		Description:  profile.Description,
+		FriendsCount: profile.FriendsCount,
 	}, nil
 }
 

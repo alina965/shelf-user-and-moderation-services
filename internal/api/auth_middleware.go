@@ -17,6 +17,35 @@ type SessionChecker interface {
 	CheckSession(context.Context, uuid.UUID, uuid.UUID) error
 }
 
+func ensureRequestID(c *gin.Context) string {
+	requestID := c.GetString("requestID")
+	if requestID == "" {
+		requestID = "req_" + uuid.NewString()
+		c.Set("requestID", requestID)
+	}
+	c.Header("X-Request-ID", requestID)
+	return requestID
+}
+
+func RequestIDMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ensureRequestID(c)
+		c.Next()
+	}
+}
+
+func OptionalAuthMiddleware(parser TokenParser, sessions SessionChecker) gin.HandlerFunc {
+	required := AuthMiddleware(parser, sessions)
+	return func(c *gin.Context) {
+		c.Header("Cache-Control", "no-store")
+		if _, present := c.Request.Header["Authorization"]; !present {
+			c.Next()
+			return
+		}
+		required(c)
+	}
+}
+
 func AuthMiddleware(parser TokenParser, sessions SessionChecker) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		parts := strings.Fields(c.GetHeader("Authorization"))
