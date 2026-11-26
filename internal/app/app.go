@@ -33,7 +33,7 @@ func New(config *config.Config) (*App, error) {
 	userRepo := repository.NewUserRepository(db)
 	tokenRepo := repository.NewRefreshTokenRepository(db)
 	attemptsRepo := repository.NewLoginAttemptsRepository(db)
-	hasher := security.NewBcryptHasher(config.BcryptCost)
+	hasher := security.NewPasswordHasher()
 	jwtService := jwt.NewJWTService([]byte(config.JwtSecret), config.AccessTokenTTL)
 	userService := auth.NewAuthService(hasher, jwtService, tokenRepo, userRepo, attemptsRepo, config.RefreshTokenTTL)
 	authHandler := api.NewAuthHandler(userService)

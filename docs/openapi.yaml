@@ -1,0 +1,2526 @@
+openapi: 3.0.3
+info:
+  title: User Service API
+  version: 1.0.0
+  description: 'Реализованные эндпоинты User Service (Go + Gin). Прямые пути сервиса не содержат /api/v1: внешний
+    префикс добавляет Gateway. Внутренние /internal/* доступны только доверенным сервисам, закрываются от внешнего
+    Gateway и при развёртывании вызываются по TLS. Сообщения исключены из MVP.
+
+
+    Каждый ответ содержит сгенерированный сервером X-Request-ID; прикладные ошибки дублируют его в request_id.
+    Входящий X-Request-ID не используется. Ответ 204 не содержит тела. Неизвестные маршруты и аварийные ответы
+    Gin могут иметь иной формат.
+
+
+    Проверка доступа учитывает текущую серверную сессию, приватность, дружбу и блокировки. Ошибка обязательной
+    проверки означает отказ в выдаче закрытых данных; положительные решения не следует кэшировать между запросами.
+    Для внутреннего JSON допустим один объект до 1 МиБ, неизвестные поля запрещены (INVALID_JSON).
+
+
+    Строки email, username и identifier обрезаются по краям до валидации; ограничения в описаниях относятся
+    к нормализованному значению. Пароли не обрезаются и не нормализуются.'
+servers:
+- url: http://localhost:8080
+  description: Прямой локальный адрес User Service без Gateway.
+tags:
+- name: Авторизация
+- name: Пользователи
+- name: Заявки и дружба
+- name: Блокировки
+- name: Внутреннее API
+- name: Состояние сервиса
+security: []
+paths:
+  /auth/register:
+    post:
+      tags:
+      - Авторизация
+      summary: Регистрация
+      description: Регистрация без подтверждения почты. Возвращает user_id; токены выдаются отдельным входом.
+        Privacy профиля и разделов создаётся со значением public. Ошибки всех полей возвращаются в error.fields.
+        При сочетании ошибок формата и уникальности — 400 INVALID_REGISTRATION со всеми полями; если нарушена
+        только уникальность — 409 ACCOUNT_EXISTS.
+      operationId: registerUser
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+            example:
+              email: anna@example.com
+              username: Anna
+              password: ExamplePass123!
+              password_confirmation: ExamplePass123!
+      responses:
+        '201':
+          description: Успешный ответ.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegisterResponse'
+              examples:
+                success:
+                  value:
+                    user_id: 11111111-1111-4111-8111-111111111111
+        '400':
+          description: 'Возможные error.code: `INVALID_JSON`, `INVALID_REGISTRATION`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                INVALID_JSON:
+                  $ref: '#/components/examples/INVALID_JSON'
+                INVALID_REGISTRATION:
+                  $ref: '#/components/examples/INVALID_REGISTRATION'
+        '409':
+          description: 'Возможные error.code: `ACCOUNT_EXISTS`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                ACCOUNT_EXISTS:
+                  $ref: '#/components/examples/ACCOUNT_EXISTS'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /auth/login:
+    post:
+      tags:
+      - Авторизация
+      summary: Вход
+      description: Вход по email или username. Каждый успешный вход создаёт отдельную серверную сессию. Пять
+        последовательных неверных попыток по нормализованному идентификатору блокируют вход на 1 час, включая
+        несуществующий аккаунт. Email и имя имеют независимые счётчики. Неверный формат даёт INVALID_LOGIN
+        без увеличения счётчика; успешный вход сбрасывает счётчик. После блокировки или часового перерыва начинается
+        новый отсчёт. Клиент хранит пару токенов и использует expires_in. При редком исчезновении профиля во
+        время входа возможен PROFILE_NOT_FOUND.
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              identifier: anna@example.com
+              password: ExamplePass123!
+      responses:
+        '200':
+          description: Успешный ответ.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+              examples:
+                success:
+                  value:
+                    access_token: <access_token>
+                    refresh_token: <refresh_token>
+                    expires_in: 899
+                    user:
+                      id: 11111111-1111-4111-8111-111111111111
+                      email: anna@example.com
+                      username: Anna
+                      avatar_url: null
+                      banner_url: null
+                      description: null
+                      friends_count: 0
+                      privacy:
+                        profile_visibility: public
+                        description_visibility: public
+                        friends_visibility: public
+                        communities_visibility: public
+        '400':
+          description: 'Возможные error.code: `INVALID_JSON`, `INVALID_LOGIN`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                INVALID_JSON:
+                  $ref: '#/components/examples/INVALID_JSON'
+                INVALID_LOGIN:
+                  $ref: '#/components/examples/INVALID_LOGIN'
+        '401':
+          description: 'Возможные error.code: `BAD_CREDENTIALS`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                BAD_CREDENTIALS:
+                  $ref: '#/components/examples/BAD_CREDENTIALS'
+        '404':
+          description: 'Возможные error.code: `PROFILE_NOT_FOUND`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                PROFILE_NOT_FOUND:
+                  $ref: '#/components/examples/PROFILE_NOT_FOUND'
+        '429':
+          description: 'Возможные error.code: `LOGIN_LOCKED`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                LOGIN_LOCKED:
+                  $ref: '#/components/examples/LOGIN_LOCKED'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /auth/refresh:
+    post:
+      tags:
+      - Авторизация
+      summary: Обновить токены
+      description: Транзакционная ротация refresh в исходной сессии. Старый refresh удаляется и повторно даёт
+        INVALID_REFRESH_TOKEN; срок сессии не продлевается. Access, выпущенный в ту же секунду, может совпасть
+        строково с прежним. Если запись refresh уже удалена, INVALID_REFRESH_TOKEN может вернуться и после
+        отзыва сессии. Сроки задаются ACCESS_TOKEN_TTL и REFRESH_TOKEN_TTL.
+      operationId: refreshTokens
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+            example:
+              refresh_token: <refresh_token>
+      responses:
+        '200':
+          description: Успешный ответ.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RefreshResponse'
+              examples:
+                success:
+                  value:
+                    access_token: <new_access_token>
+                    refresh_token: <new_refresh_token>
+                    expires_in: 899
+        '400':
+          $ref: '#/components/responses/InvalidJSON'
+        '401':
+          description: 'Возможные error.code: `INVALID_REFRESH_TOKEN`, `SESSION_REVOKED`, `SESSION_EXPIRED`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                INVALID_REFRESH_TOKEN:
+                  $ref: '#/components/examples/INVALID_REFRESH_TOKEN'
+                SESSION_REVOKED:
+                  $ref: '#/components/examples/SESSION_REVOKED'
+                SESSION_EXPIRED:
+                  $ref: '#/components/examples/SESSION_EXPIRED'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /auth/logout:
+    post:
+      tags:
+      - Авторизация
+      summary: Выйти из текущей сессии
+      description: Отзывает только текущую сессию, другие устройства остаются активными. Клиент удаляет локальные
+        токены. Ещё не истёкший access этой сессии и её действующий refresh после выхода отклоняются как SESSION_REVOKED.
+        Повторный logout также отклоняется; истёкший JWT сначала даёт UNAUTHORIZED. Тело не требуется.
+      operationId: logout
+      security:
+      - UserBearer: []
+      responses:
+        '204':
+          description: Успех. Тело ответа отсутствует.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+        '401':
+          $ref: '#/components/responses/UserSessionError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /users/me:
+    get:
+      tags:
+      - Пользователи
+      summary: Собственный профиль
+      description: 'Полный собственный профиль: email, описание, число друзей и сохранённая privacy. description
+        и friends_count присутствуют независимо от приватности; description может быть null. avatar_url и banner_url
+        пока null. Публичного API изменения профиля/приватности нет.'
+      operationId: getOwnProfile
+      security:
+      - UserBearer: []
+      responses:
+        '200':
+          description: Успешный ответ.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OwnProfile'
+              examples:
+                success:
+                  value:
+                    id: 11111111-1111-4111-8111-111111111111
+                    email: anna@example.com
+                    username: Anna
+                    avatar_url: null
+                    banner_url: null
+                    description: null
+                    friends_count: 0
+                    privacy:
+                      profile_visibility: public
+                      description_visibility: public
+                      friends_visibility: public
+                      communities_visibility: public
+        '401':
+          $ref: '#/components/responses/UserSessionError'
+        '404':
+          description: 'Возможные error.code: `PROFILE_NOT_FOUND`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                PROFILE_NOT_FOUND:
+                  $ref: '#/components/examples/PROFILE_NOT_FOUND'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /users:
+    get:
+      tags:
+      - Пользователи
+      summary: Поиск пользователей
+      description: Публичный поиск только по username, без email и описания. Переданный Authorization здесь
+        не проверяется и на результат не влияет. Закрытые профили сохраняют публичную карточку. При смене q
+        клиент сбрасывает cursor и отбрасывает запоздавшие ответы. Курсор связан с нормализованным q; пагинация
+        не фиксирует снимок БД между страницами.
+      operationId: searchUsers
+      security: []
+      parameters:
+      - name: q
+        in: query
+        required: true
+        description: Поиск по username без регистра. После trim минимум 2 символа. Полное совпадение, затем
+          начало имени, затем другое вхождение; внутри группы имя без регистра и UUID. Символы %, _ и обратная
+          косая черта считаются буквально.
+        schema:
+          type: string
+        example: anna
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Успешный ответ.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserPage'
+              examples:
+                success:
+                  value:
+                    items:
+                    - id: 11111111-1111-4111-8111-111111111111
+                      username: Anna
+                      avatar_url: null
+                    next_cursor: null
+        '400':
+          description: 'Возможные error.code: `QUERY_REQUIRED`, `QUERY_TOO_SHORT`, `INVALID_LIMIT`, `INVALID_CURSOR`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                QUERY_REQUIRED:
+                  $ref: '#/components/examples/QUERY_REQUIRED'
+                QUERY_TOO_SHORT:
+                  $ref: '#/components/examples/QUERY_TOO_SHORT'
+                INVALID_LIMIT:
+                  $ref: '#/components/examples/INVALID_LIMIT'
+                INVALID_CURSOR:
+                  $ref: '#/components/examples/INVALID_CURSOR'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /users/{id}:
+    get:
+      tags:
+      - Пользователи
+      summary: Профиль по ID
+      description: 'Можно вызвать без токена как гость. Если Authorization передан, JWT и сессия проверяются;
+        ошибочный токен не превращается в гостевой доступ. Сначала проверяется профиль целиком, затем отдельные
+        разделы. Владелец видит собственные поля; public доступно всем; friends требует дружбы без блокировки
+        в любую сторону; private доступно только владельцу. Закрытый профиль отвечает 200 с is_private=true
+        и без description/friends_count. Email и privacy здесь не выдаются, даже владельцу. Нет списков коллекций
+        и сообществ: ими владеют Collection и Community.'
+      operationId: getUserProfile
+      security:
+      - {}
+      - UserBearer: []
+      parameters:
+      - $ref: '#/components/parameters/UserID'
+      responses:
+        '200':
+          description: Успешный ответ.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicProfile'
+              examples:
+                success:
+                  value:
+                    id: 11111111-1111-4111-8111-111111111111
+                    username: Anna
+                    avatar_url: null
+                    banner_url: null
+                    is_private: false
+                    description: Люблю книги и кино
+                    friends_count: 0
+                alternative:
+                  value:
+                    id: 11111111-1111-4111-8111-111111111111
+                    username: Anna
+                    avatar_url: null
+                    banner_url: null
+                    is_private: true
+        '401':
+          $ref: '#/components/responses/NoStoreUserSessionError'
+        '404':
+          description: 'Возможные error.code: `PROFILE_NOT_FOUND`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                PROFILE_NOT_FOUND:
+                  $ref: '#/components/examples/PROFILE_NOT_FOUND'
+        '503':
+          $ref: '#/components/responses/NoStoreServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/NoStoreInternalError'
+  /users/{id}/friend-requests:
+    post:
+      tags:
+      - Заявки и дружба
+      summary: Отправить заявку
+      description: 'Тело должно отсутствовать. Отправитель берётся из сессии. Дружба возникает только после
+        принятия. Новая заявка при исходящей pending даёт REQUEST_ALREADY_EXISTS, при встречной — INCOMING_REQUEST_EXISTS
+        с error.details.friend_request_id, без автоматического принятия. Idempotency-Key обязателен: исходный
+        результат (включая бизнес-ошибки) хранится 24 часа в пределах пользователя и операции. Тот же ключ/получатель
+        возвращает прежний результат; другой получатель — IDEMPOTENCY_CONFLICT. Отмена, принятие или блокировка
+        не меняют сохранённый ответ. Для нового действия создай новый ключ, для сетевого повтора сохраняй прежний.
+        Текущая сессия проверяется при каждом повторе. Ошибки авторизации, заголовков/пути/тела и технические
+        сбои не сохраняются.'
+      operationId: sendFriendRequest
+      security:
+      - UserBearer: []
+      parameters:
+      - $ref: '#/components/parameters/UserID'
+      - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '201':
+          description: Успешный ответ.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FriendRequest'
+              examples:
+                success:
+                  value:
+                    id: 33333333-3333-4333-8333-333333333333
+                    status: pending
+                    created_at: '2026-11-26T10:00:00Z'
+        '400':
+          description: 'Возможные error.code: `IDEMPOTENCY_KEY_REQUIRED`, `INVALID_IDEMPOTENCY_KEY`, `INVALID_REQUEST`,
+            `SELF_ACTION`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                IDEMPOTENCY_KEY_REQUIRED:
+                  $ref: '#/components/examples/IDEMPOTENCY_KEY_REQUIRED'
+                INVALID_IDEMPOTENCY_KEY:
+                  $ref: '#/components/examples/INVALID_IDEMPOTENCY_KEY'
+                INVALID_REQUEST:
+                  $ref: '#/components/examples/INVALID_REQUEST'
+                SELF_ACTION:
+                  $ref: '#/components/examples/SELF_ACTION'
+        '401':
+          $ref: '#/components/responses/UserSessionError'
+        '403':
+          description: 'Возможные error.code: `INTERACTION_BLOCKED`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                INTERACTION_BLOCKED:
+                  $ref: '#/components/examples/INTERACTION_BLOCKED'
+        '404':
+          description: 'Возможные error.code: `PROFILE_NOT_FOUND`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                PROFILE_NOT_FOUND:
+                  $ref: '#/components/examples/PROFILE_NOT_FOUND'
+        '409':
+          description: 'Возможные error.code: `IDEMPOTENCY_CONFLICT`, `ALREADY_FRIENDS`, `REQUEST_ALREADY_EXISTS`,
+            `INCOMING_REQUEST_EXISTS`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                IDEMPOTENCY_CONFLICT:
+                  $ref: '#/components/examples/IDEMPOTENCY_CONFLICT'
+                ALREADY_FRIENDS:
+                  $ref: '#/components/examples/ALREADY_FRIENDS'
+                REQUEST_ALREADY_EXISTS:
+                  $ref: '#/components/examples/REQUEST_ALREADY_EXISTS'
+                INCOMING_REQUEST_EXISTS:
+                  $ref: '#/components/examples/INCOMING_REQUEST_EXISTS'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /friend-requests:
+    get:
+      tags:
+      - Заявки и дружба
+      summary: Свои ожидающие заявки
+      description: 'Только собственные pending-заявки: новые первыми, затем UUID по убыванию. direction обязателен.
+        user — другая сторона заявки. Курсор связан с текущим пользователем и направлением.'
+      operationId: listFriendRequests
+      security:
+      - UserBearer: []
+      parameters:
+      - name: direction
+        in: query
+        required: true
+        schema:
+          type: string
+          enum:
+          - incoming
+          - outgoing
+        example: incoming
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Успешный ответ.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FriendRequestPage'
+              examples:
+                success:
+                  value:
+                    items:
+                    - id: 33333333-3333-4333-8333-333333333333
+                      status: pending
+                      created_at: '2026-11-26T10:00:00Z'
+                      user:
+                        id: 22222222-2222-4222-8222-222222222222
+                        username: anna_books
+                        avatar_url: null
+                    next_cursor: null
+        '400':
+          description: 'Возможные error.code: `INVALID_DIRECTION`, `INVALID_LIMIT`, `INVALID_CURSOR`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                INVALID_DIRECTION:
+                  $ref: '#/components/examples/INVALID_DIRECTION'
+                INVALID_LIMIT:
+                  $ref: '#/components/examples/INVALID_LIMIT'
+                INVALID_CURSOR:
+                  $ref: '#/components/examples/INVALID_CURSOR'
+        '401':
+          $ref: '#/components/responses/UserSessionError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /friend-requests/{id}/accept:
+    post:
+      tags:
+      - Заявки и дружба
+      summary: Принять заявку
+      description: 'Принять может только получатель; отправителю возвращается FORBIDDEN. Постороннему — FRIEND_REQUEST_NOT_FOUND.
+        Смена статуса и создание одной взаимной дружбы атомарны. Повтор успешен, пока эта дружба существует.
+        После её удаления старая принятая заявка не восстанавливает связь: FRIEND_REQUEST_NOT_PENDING. Тело
+        не требуется.'
+      operationId: acceptFriendRequest
+      security:
+      - UserBearer: []
+      parameters:
+      - $ref: '#/components/parameters/FriendRequestID'
+      responses:
+        '200':
+          description: Успешный ответ.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AcceptedRequest'
+              examples:
+                success:
+                  value:
+                    status: accepted
+        '401':
+          $ref: '#/components/responses/UserSessionError'
+        '403':
+          description: 'Возможные error.code: `FORBIDDEN`, `INTERACTION_BLOCKED`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                FORBIDDEN:
+                  $ref: '#/components/examples/FORBIDDEN'
+                INTERACTION_BLOCKED:
+                  $ref: '#/components/examples/INTERACTION_BLOCKED'
+        '404':
+          description: 'Возможные error.code: `FRIEND_REQUEST_NOT_FOUND`, `PROFILE_NOT_FOUND`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                FRIEND_REQUEST_NOT_FOUND:
+                  $ref: '#/components/examples/FRIEND_REQUEST_NOT_FOUND'
+                PROFILE_NOT_FOUND:
+                  $ref: '#/components/examples/PROFILE_NOT_FOUND'
+        '409':
+          description: 'Возможные error.code: `FRIEND_REQUEST_NOT_PENDING`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                FRIEND_REQUEST_NOT_PENDING:
+                  $ref: '#/components/examples/FRIEND_REQUEST_NOT_PENDING'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /friend-requests/{id}:
+    delete:
+      tags:
+      - Заявки и дружба
+      summary: Отменить заявку или отказать
+      description: Отправитель отменяет ожидающую заявку (cancelled), получатель отклоняет (rejected). Повтор
+        своей отмены/отказа даёт 204. Противоположное действие после закрытия либо удаление принятой заявки
+        даёт FRIEND_REQUEST_NOT_PENDING. Постороннему возвращается FRIEND_REQUEST_NOT_FOUND. Тело не требуется.
+      operationId: dismissFriendRequest
+      security:
+      - UserBearer: []
+      parameters:
+      - $ref: '#/components/parameters/FriendRequestID'
+      responses:
+        '204':
+          description: Успех. Тело ответа отсутствует.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+        '401':
+          $ref: '#/components/responses/UserSessionError'
+        '404':
+          description: 'Возможные error.code: `FRIEND_REQUEST_NOT_FOUND`, `PROFILE_NOT_FOUND`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                FRIEND_REQUEST_NOT_FOUND:
+                  $ref: '#/components/examples/FRIEND_REQUEST_NOT_FOUND'
+                PROFILE_NOT_FOUND:
+                  $ref: '#/components/examples/PROFILE_NOT_FOUND'
+        '409':
+          description: 'Возможные error.code: `FRIEND_REQUEST_NOT_PENDING`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                FRIEND_REQUEST_NOT_PENDING:
+                  $ref: '#/components/examples/FRIEND_REQUEST_NOT_PENDING'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /users/me/friends/{user_id}:
+    delete:
+      tags:
+      - Заявки и дружба
+      summary: Удалить дружбу
+      description: Удаляет взаимную дружбу текущего пользователя и указанного пользователя; счётчик уменьшается
+        у обоих. Повтор для существующего пользователя тоже даёт 204. Нельзя действовать на себя. Тело не требуется.
+      operationId: removeFriend
+      security:
+      - UserBearer: []
+      parameters:
+      - $ref: '#/components/parameters/TargetUserID'
+      responses:
+        '204':
+          description: Успех. Тело ответа отсутствует.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+        '400':
+          description: 'Возможные error.code: `SELF_ACTION`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                SELF_ACTION:
+                  $ref: '#/components/examples/SELF_ACTION'
+        '401':
+          $ref: '#/components/responses/UserSessionError'
+        '404':
+          description: 'Возможные error.code: `PROFILE_NOT_FOUND`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                PROFILE_NOT_FOUND:
+                  $ref: '#/components/examples/PROFILE_NOT_FOUND'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /users/{id}/friends:
+    get:
+      tags:
+      - Заявки и дружба
+      summary: Список друзей
+      description: 'Приватность профиля и раздела друзей проверяется на каждой странице. public доступно гостю;
+        friends — другу без блокировок в обе стороны; private — владельцу. Закрытый список даёт FORBIDDEN без
+        элементов и счётчиков. Для своего списка можно передать me вместо UUID, но тогда токен обязателен.
+        Порядок: имя без регистра, затем UUID. Курсор связан с владельцем и зрителем; проверка доступа и чтение
+        страницы используют один снимок БД.'
+      operationId: listFriends
+      security:
+      - {}
+      - UserBearer: []
+      parameters:
+      - $ref: '#/components/parameters/FriendOwnerID'
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Успешный ответ.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserPage'
+              examples:
+                success:
+                  value:
+                    items:
+                    - id: 22222222-2222-4222-8222-222222222222
+                      username: anna_books
+                      avatar_url: null
+                    next_cursor: null
+        '400':
+          description: 'Возможные error.code: `INVALID_LIMIT`, `INVALID_CURSOR`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                INVALID_LIMIT:
+                  $ref: '#/components/examples/INVALID_LIMIT'
+                INVALID_CURSOR:
+                  $ref: '#/components/examples/INVALID_CURSOR'
+        '401':
+          $ref: '#/components/responses/NoStoreUserSessionError'
+        '403':
+          description: 'Возможные error.code: `FORBIDDEN`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                FORBIDDEN:
+                  $ref: '#/components/examples/FORBIDDEN'
+        '404':
+          description: 'Возможные error.code: `PROFILE_NOT_FOUND`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                PROFILE_NOT_FOUND:
+                  $ref: '#/components/examples/PROFILE_NOT_FOUND'
+        '503':
+          $ref: '#/components/responses/NoStoreServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/NoStoreInternalError'
+  /users/me/blocks/{user_id}:
+    put:
+      tags:
+      - Блокировки
+      summary: Заблокировать пользователя
+      description: Создаёт собственную направленную блокировку и атомарно отменяет pending-заявку в обе стороны.
+        Новые заявки запрещены в обе стороны. Дружба сохраняется, доступ friends приостановлен, публичный контент
+        остаётся доступным. Повтор даёт 204. Тело не требуется.
+      operationId: blockUser
+      security:
+      - UserBearer: []
+      parameters:
+      - $ref: '#/components/parameters/TargetUserID'
+      responses:
+        '204':
+          description: Успех. Тело ответа отсутствует.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+        '400':
+          description: 'Возможные error.code: `SELF_ACTION`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                SELF_ACTION:
+                  $ref: '#/components/examples/SELF_ACTION'
+        '401':
+          $ref: '#/components/responses/UserSessionError'
+        '404':
+          description: 'Возможные error.code: `PROFILE_NOT_FOUND`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                PROFILE_NOT_FOUND:
+                  $ref: '#/components/examples/PROFILE_NOT_FOUND'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags:
+      - Блокировки
+      summary: Снять собственную блокировку
+      description: Снимает только собственную направленную блокировку; встречная остаётся. Отменённая заявка
+        не восстанавливается. Повтор для существующего пользователя даёт 204. Тело не требуется.
+      operationId: unblockUser
+      security:
+      - UserBearer: []
+      parameters:
+      - $ref: '#/components/parameters/TargetUserID'
+      responses:
+        '204':
+          description: Успех. Тело ответа отсутствует.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+        '400':
+          description: 'Возможные error.code: `SELF_ACTION`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                SELF_ACTION:
+                  $ref: '#/components/examples/SELF_ACTION'
+        '401':
+          $ref: '#/components/responses/UserSessionError'
+        '404':
+          description: 'Возможные error.code: `PROFILE_NOT_FOUND`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                PROFILE_NOT_FOUND:
+                  $ref: '#/components/examples/PROFILE_NOT_FOUND'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /users/me/blocks:
+    get:
+      tags:
+      - Блокировки
+      summary: Собственные блокировки
+      description: 'Только собственные исходящие блокировки; возвращает публичные карточки. Порядок: имя без
+        регистра, затем UUID. Курсор связан с текущим пользователем.'
+      operationId: listBlockedUsers
+      security:
+      - UserBearer: []
+      parameters:
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Успешный ответ.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserPage'
+              examples:
+                success:
+                  value:
+                    items:
+                    - id: 22222222-2222-4222-8222-222222222222
+                      username: anna_books
+                      avatar_url: null
+                    next_cursor: null
+        '400':
+          description: 'Возможные error.code: `INVALID_LIMIT`, `INVALID_CURSOR`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                INVALID_LIMIT:
+                  $ref: '#/components/examples/INVALID_LIMIT'
+                INVALID_CURSOR:
+                  $ref: '#/components/examples/INVALID_CURSOR'
+        '401':
+          $ref: '#/components/responses/UserSessionError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /internal/auth/introspect:
+    post:
+      tags:
+      - Внутреннее API
+      summary: Проверить access и сессию
+      description: Доступно Collection, Community, Catalog и Moderation. В Authorization передаётся служебный
+        секрет, в теле — пользовательский access. Валидный токен и активная серверная сессия дают active=true
+        и user_id; пустой, неверный, просроченный токен или недействующая сессия — 200 с active=false без user_id.
+        Роль не выдаётся. Сбой БД возвращает 503, а не active=false. Это проверка личности, не разрешение на
+        конкретный ресурс.
+      operationId: introspectAccessToken
+      security:
+      - ServiceBearer: []
+      x-allowed-services:
+      - collection
+      - community
+      - catalog
+      - moderation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IntrospectRequest'
+            example:
+              access_token: <user_access_token>
+      responses:
+        '200':
+          description: Успешный ответ.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Identity'
+              examples:
+                success:
+                  value:
+                    active: true
+                    user_id: 11111111-1111-4111-8111-111111111111
+                alternative:
+                  value:
+                    active: false
+        '400':
+          $ref: '#/components/responses/NoStoreInvalidJSON'
+        '401':
+          $ref: '#/components/responses/NoStoreServiceAuthError'
+        '503':
+          $ref: '#/components/responses/NoStoreServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/NoStoreInternalError'
+  /internal/auth/permission-check:
+    post:
+      tags:
+      - Внутреннее API
+      summary: Проверить право рассмотрения заявок каталога
+      description: Только Moderation. Проверяет текущую сессию и роль platform_moderator для catalog_submissions.review.
+        Обычный авторизованный пользователь получает 200 allowed=false. Неверный пользовательский токен/сессия
+        даёт 401, а не allowed=false. Неизвестное/пустое permission — INVALID_REQUEST. Любой другой вызывающий
+        сервис получает FORBIDDEN.
+      operationId: checkPermission
+      security:
+      - ServiceBearer: []
+      x-allowed-services:
+      - moderation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PermissionCheckRequest'
+            example:
+              access_token: <user_access_token>
+              permission: catalog_submissions.review
+      responses:
+        '200':
+          description: Успешный ответ.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PermissionCheckResponse'
+              examples:
+                success:
+                  value:
+                    allowed: true
+                alternative:
+                  value:
+                    allowed: false
+        '400':
+          description: 'Возможные error.code: `INVALID_JSON`, `INVALID_REQUEST`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                INVALID_JSON:
+                  $ref: '#/components/examples/INVALID_JSON'
+                INVALID_REQUEST:
+                  $ref: '#/components/examples/INVALID_REQUEST'
+        '401':
+          $ref: '#/components/responses/NoStoreServiceAndUserAuthError'
+        '403':
+          description: 'Возможные error.code: `FORBIDDEN`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                FORBIDDEN:
+                  $ref: '#/components/examples/FORBIDDEN'
+        '503':
+          $ref: '#/components/responses/NoStoreServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/NoStoreInternalError'
+  /internal/users/access-check:
+    post:
+      tags:
+      - Внутреннее API
+      summary: Пакетно проверить доступ
+      description: Только Collection и Community; section=collection разрешён только Collection. Возвращает
+        1–100 решений в исходном порядке в одном снимке БД. Пустой/отсутствующий access_token означает гостя;
+        переданный неверный токен даёт 401. Для collection обязательна visibility, для остальных разделов используется
+        сохранённая privacy. Нужен доступ одновременно к профилю и разделу/коллекции. При allowed=false закрытый
+        ресурс не выдаётся, при сбое — 503 всего пакета. is_friend отражает сохранённую дружбу, is_blocked
+        — блокировку хотя бы в одну сторону; итоговый доступ определяется allowed. Существование коллекции
+        и её владельца/видимость Collection проверяет в собственной БД.
+      operationId: checkAccess
+      security:
+      - ServiceBearer: []
+      x-allowed-services:
+      - collection
+      - community
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AccessChecksRequest'
+            example:
+              access_token: <user_access_token>
+              checks:
+              - owner_id: 11111111-1111-4111-8111-111111111111
+                section: profile
+              - owner_id: 11111111-1111-4111-8111-111111111111
+                section: collection
+                visibility: friends
+      responses:
+        '200':
+          description: Успешный ответ.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccessChecksResponse'
+              examples:
+                success:
+                  value:
+                    items:
+                    - owner_id: 11111111-1111-4111-8111-111111111111
+                      section: profile
+                      exists: true
+                      allowed: true
+                      is_friend: true
+                      is_blocked: false
+                    - owner_id: 11111111-1111-4111-8111-111111111111
+                      section: collection
+                      exists: true
+                      allowed: true
+                      is_friend: true
+                      is_blocked: false
+        '400':
+          description: 'Возможные error.code: `INVALID_JSON`, `INVALID_REQUEST`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                INVALID_JSON:
+                  $ref: '#/components/examples/INVALID_JSON'
+                INVALID_REQUEST:
+                  $ref: '#/components/examples/INVALID_REQUEST'
+        '401':
+          $ref: '#/components/responses/NoStoreServiceAndUserAuthError'
+        '403':
+          description: 'Возможные error.code: `FORBIDDEN`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                FORBIDDEN:
+                  $ref: '#/components/examples/FORBIDDEN'
+        '503':
+          $ref: '#/components/responses/NoStoreServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/NoStoreInternalError'
+  /internal/users/previews:
+    post:
+      tags:
+      - Внутреннее API
+      summary: Публичные карточки пользователей
+      description: Доступно Collection, Community, Catalog и Moderation. Принимает 1–100 различных ненулевых
+        UUID. Возвращает публичные имя/аватар независимо от приватности и блокировки; email, banner, роль и
+        описание не выдаются. Отсутствующие пользователи перечислены в not_found_ids. Сбой БД не выдаётся за
+        отсутствие пользователей.
+      operationId: getUserPreviews
+      security:
+      - ServiceBearer: []
+      x-allowed-services:
+      - collection
+      - community
+      - catalog
+      - moderation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PreviewsRequest'
+            example:
+              user_ids:
+              - 11111111-1111-4111-8111-111111111111
+              - 22222222-2222-4222-8222-222222222222
+      responses:
+        '200':
+          description: Успешный ответ.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PreviewsResponse'
+              examples:
+                success:
+                  value:
+                    items:
+                    - id: 11111111-1111-4111-8111-111111111111
+                      username: Anna
+                      avatar_url: null
+                    not_found_ids:
+                    - 22222222-2222-4222-8222-222222222222
+        '400':
+          description: 'Возможные error.code: `INVALID_JSON`, `INVALID_REQUEST`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                INVALID_JSON:
+                  $ref: '#/components/examples/INVALID_JSON'
+                INVALID_REQUEST:
+                  $ref: '#/components/examples/INVALID_REQUEST'
+        '401':
+          $ref: '#/components/responses/NoStoreServiceAuthError'
+        '503':
+          $ref: '#/components/responses/NoStoreServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/NoStoreInternalError'
+  /internal/users/{id}/blocked-user-ids:
+    get:
+      tags:
+      - Внутреннее API
+      summary: ID заблокированных авторов для ленты
+      description: Только Community и только для пользователя из X-User-Authorization. В Authorization — служебный
+        секрет, в X-User-Authorization — полная строка Bearer <user_access_token>. ID пути должен совпадать
+        с текущим пользователем, иначе FORBIDDEN. Возвращаются только исходящие блокировки, UUID по возрастанию.
+        Для фильтрации всей ленты нужно прочитать все страницы до next_cursor=null. Неверный/нулевой UUID пути
+        — INVALID_REQUEST.
+      operationId: listBlockedUserIDs
+      security:
+      - ServiceBearer: []
+        UserContext: []
+      x-allowed-services:
+      - community
+      parameters:
+      - $ref: '#/components/parameters/UserID'
+      - $ref: '#/components/parameters/Limit'
+      - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Успешный ответ.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BlockedIDsResponse'
+              examples:
+                success:
+                  value:
+                    items:
+                    - 22222222-2222-4222-8222-222222222222
+                    next_cursor: null
+        '400':
+          description: 'Возможные error.code: `INVALID_REQUEST`, `INVALID_LIMIT`, `INVALID_CURSOR`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                INVALID_REQUEST:
+                  $ref: '#/components/examples/INVALID_REQUEST'
+                INVALID_LIMIT:
+                  $ref: '#/components/examples/INVALID_LIMIT'
+                INVALID_CURSOR:
+                  $ref: '#/components/examples/INVALID_CURSOR'
+        '401':
+          $ref: '#/components/responses/NoStoreServiceAndUserAuthError'
+        '403':
+          description: 'Возможные error.code: `FORBIDDEN`.'
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+              examples:
+                FORBIDDEN:
+                  $ref: '#/components/examples/FORBIDDEN'
+        '503':
+          $ref: '#/components/responses/NoStoreServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/NoStoreInternalError'
+  /health:
+    get:
+      tags:
+      - Состояние сервиса
+      summary: Проверка процесса
+      description: Проверка HTTP-процесса без обращения к БД.
+      operationId: getHealth
+      security: []
+      responses:
+        '200':
+          description: Успешный ответ.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              examples:
+                success:
+                  value:
+                    status: ok
+  /ready:
+    get:
+      tags:
+      - Состояние сервиса
+      summary: Проверка PostgreSQL
+      description: Каждый запрос выполняет PostgreSQL Ping с таймаутом 2 секунды. При недоступности/таймауте
+        возвращает 503 SERVICE_UNAVAILABLE без деталей подключения.
+      operationId: getReady
+      security: []
+      responses:
+        '200':
+          description: Успешный ответ.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestID'
+            Cache-Control:
+              $ref: '#/components/headers/NoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadyResponse'
+              examples:
+                success:
+                  value:
+                    status: ready
+        '503':
+          $ref: '#/components/responses/NoStoreServiceUnavailable'
+components:
+  securitySchemes:
+    UserBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Пользовательский access_token из POST /auth/login или /auth/refresh. Проверяются JWT и серверная
+        сессия.
+    ServiceBearer:
+      type: http
+      scheme: bearer
+      description: 'Отдельный секрет вызывающего сервиса из INTERNAL_SERVICE_TOKENS. Это не пользовательский
+        JWT. Допустимые сервисы: collection, community, catalog, moderation. Секреты не передаются фронтенду.'
+    UserContext:
+      type: apiKey
+      in: header
+      name: X-User-Authorization
+      description: 'Значение целиком: Bearer <user_access_token>. Используется одновременно с ServiceBearer
+        в методе списка заблокированных ID.'
+  parameters:
+    Limit:
+      name: limit
+      in: query
+      description: Размер страницы; по умолчанию 20.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 20
+        default: 20
+      example: 20
+    Cursor:
+      name: cursor
+      in: query
+      description: Курсор из next_cursor предыдущей страницы. Не разбирать и не строить самостоятельно. Пустая
+        строка означает первую страницу.
+      schema:
+        type: string
+        maxLength: 4096
+    UserID:
+      name: id
+      in: path
+      required: true
+      description: UUID пользователя. Некорректный/нулевой UUID возвращает PROFILE_NOT_FOUND; во внутреннем
+        методе — INVALID_REQUEST.
+      schema:
+        $ref: '#/components/schemas/UUID'
+    TargetUserID:
+      name: user_id
+      in: path
+      required: true
+      description: UUID другого пользователя.
+      schema:
+        $ref: '#/components/schemas/UUID'
+      example: 22222222-2222-4222-8222-222222222222
+    FriendRequestID:
+      name: id
+      in: path
+      required: true
+      description: UUID заявки; некорректный/нулевой UUID возвращает FRIEND_REQUEST_NOT_FOUND.
+      schema:
+        $ref: '#/components/schemas/UUID'
+      example: 33333333-3333-4333-8333-333333333333
+    FriendOwnerID:
+      name: id
+      in: path
+      required: true
+      description: UUID владельца списка или me. Для me пользовательская авторизация обязательна.
+      schema:
+        oneOf:
+        - $ref: '#/components/schemas/UUID'
+        - type: string
+          enum:
+          - me
+      example: 11111111-1111-4111-8111-111111111111
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Новый ключ для новой операции; при сетевом повторе сохраняй прежний. Действует 24 часа в
+        пределах пользователя и операции. Дубликаты заголовка запрещены.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+        pattern: ^[A-Za-z0-9._:-]{1,128}$
+      example: 550e8400-e29b-41d4-a716-446655440000
+  headers:
+    RequestID:
+      description: Новый серверный ID запроса; совпадает с request_id в прикладной ошибке.
+      schema:
+        type: string
+      example: req_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+    NoStore:
+      description: Ответ не должен сохраняться в HTTP-кэше.
+      schema:
+        type: string
+        enum:
+        - no-store
+  schemas:
+    UUID:
+      type: string
+      format: uuid
+      example: 11111111-1111-4111-8111-111111111111
+      description: UUID пользователя или ресурса. Нулевой UUID не является допустимым идентификатором.
+    ImageURL:
+      type: string
+      format: uri
+      nullable: true
+      example: null
+      description: 'Пока всегда null: загрузка изображений и выдача URL не реализованы.'
+    Visibility:
+      type: string
+      enum:
+      - public
+      - friends
+      - private
+      description: public — всем; friends — взаимным друзьям без блокировки в обе стороны; private — только
+        владельцу.
+    NextCursor:
+      type: string
+      nullable: true
+      maxLength: 4096
+      example: null
+      description: Непрозрачный курсор следующей страницы; null означает последнюю страницу. Передавай его
+        в cursor без изменения, с прежними параметрами и контекстом зрителя.
+    ProfilePrivacy:
+      type: object
+      required:
+      - profile_visibility
+      - description_visibility
+      - friends_visibility
+      - communities_visibility
+      properties:
+        profile_visibility:
+          $ref: '#/components/schemas/Visibility'
+        description_visibility:
+          $ref: '#/components/schemas/Visibility'
+        friends_visibility:
+          $ref: '#/components/schemas/Visibility'
+        communities_visibility:
+          $ref: '#/components/schemas/Visibility'
+      additionalProperties: false
+    UserPreview:
+      type: object
+      required:
+      - id
+      - username
+      - avatar_url
+      properties:
+        id:
+          $ref: '#/components/schemas/UUID'
+        username:
+          type: string
+          example: Anna
+        avatar_url:
+          $ref: '#/components/schemas/ImageURL'
+      additionalProperties: false
+    OwnProfile:
+      type: object
+      required:
+      - id
+      - email
+      - username
+      - avatar_url
+      - banner_url
+      - description
+      - friends_count
+      - privacy
+      properties:
+        id:
+          $ref: '#/components/schemas/UUID'
+        email:
+          type: string
+          example: anna@example.com
+        username:
+          type: string
+          example: Anna
+        avatar_url:
+          $ref: '#/components/schemas/ImageURL'
+        banner_url:
+          $ref: '#/components/schemas/ImageURL'
+        description:
+          type: string
+          nullable: true
+          maxLength: 100
+          description: Строка или null, если описание не задано. Владелец получает поле независимо от privacy.
+        friends_count:
+          type: integer
+          minimum: 0
+        privacy:
+          $ref: '#/components/schemas/ProfilePrivacy'
+      additionalProperties: false
+    PublicProfile:
+      type: object
+      required:
+      - id
+      - username
+      - avatar_url
+      - banner_url
+      - is_private
+      properties:
+        id:
+          $ref: '#/components/schemas/UUID'
+        username:
+          type: string
+          example: Anna
+        avatar_url:
+          $ref: '#/components/schemas/ImageURL'
+        banner_url:
+          $ref: '#/components/schemas/ImageURL'
+        is_private:
+          type: boolean
+          description: Закрыт ли профиль целиком именно этому зрителю. Закрытый профиль возвращается с HTTP
+            200.
+        description:
+          type: string
+          maxLength: 100
+          description: Поле отсутствует при запрете доступа или отсутствии значения в БД; пустая сохранённая
+            строка допустима.
+        friends_count:
+          type: integer
+          minimum: 0
+          description: Поле отсутствует без доступа к профилю или списку друзей. Отсутствие не означает 0.
+      additionalProperties: false
+      description: Email и privacy не выдаются. Имя, аватар и шапка присутствуют всегда. При is_private=true
+        description и friends_count отсутствуют. Владелец видит доступные здесь собственные поля независимо
+        от privacy; для email и privacy нужен GET /users/me.
+    UserPage:
+      type: object
+      required:
+      - items
+      - next_cursor
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserPreview'
+          maxItems: 20
+        next_cursor:
+          $ref: '#/components/schemas/NextCursor'
+      additionalProperties: false
+    RegisterRequest:
+      type: object
+      required:
+      - email
+      - username
+      - password
+      - password_confirmation
+      properties:
+        email:
+          type: string
+          example: anna@example.com
+          description: 'Пробелы по краям удаляются. После trim: не более 254 Unicode-символов, ровно один @,
+            непустые части до/после @, домен минимум из двух непустых частей через точку; пробельные символы
+            и NUL запрещены. Проверка не ограничена RFC email-форматом. Уникальность без регистра.'
+        username:
+          type: string
+          example: Anna
+          description: 'Пробелы по краям удаляются. После trim: 1–32 символа A–Z, a–z, 0–9, _ или .; точка
+            запрещена в начале/конце, две точки подряд запрещены. Уникальность без регистра. При регистрации
+            запрещены имена без учёта регистра: admin, administrator, moderator, support, root, system, settings,
+            login, logout, register, api, polka, shelf, null, undefined.'
+        password:
+          type: string
+          minLength: 8
+          maxLength: 32
+          format: password
+          writeOnly: true
+          description: 8–32 Unicode-символа категорий L/M/N/P/S/Zs (unicode.IsGraphic). Пробелы и emoji допустимы;
+            управляющие/форматирующие символы и разделители строк запрещены. Пароль не обрезается и не нормализуется.
+        password_confirmation:
+          type: string
+          minLength: 1
+          format: password
+          writeOnly: true
+          description: Обязательное точное совпадение с password.
+    RegisterResponse:
+      type: object
+      required:
+      - user_id
+      properties:
+        user_id:
+          $ref: '#/components/schemas/UUID'
+      additionalProperties: false
+    LoginRequest:
+      type: object
+      required:
+      - identifier
+      - password
+      properties:
+        identifier:
+          type: string
+          description: Email или username. Крайние пробелы удаляются, регистр не учитывается. Формат email/username
+            проверяется как при регистрации, но зарезервированные имена допускаются.
+        password:
+          type: string
+          minLength: 1
+          maxLength: 32
+          format: password
+          writeOnly: true
+          description: 'Непустой пароль до 32 Unicode-символов unicode.IsGraphic; не обрезается. Минимум в
+            8 символов при входе не проверяется: короткий пароль даёт BAD_CREDENTIALS и учитывается как неверная
+            попытка.'
+    LoginResponse:
+      type: object
+      required:
+      - access_token
+      - refresh_token
+      - expires_in
+      - user
+      properties:
+        access_token:
+          type: string
+          description: 'JWT. Передаётся как Authorization: Bearer <access_token>.'
+        refresh_token:
+          type: string
+          description: Непрозрачный refresh-токен; не JWT.
+        expires_in:
+          type: integer
+          format: int64
+          description: Секунды до истечения access на момент ответа, например 899. Срок задаёт ACCESS_TOKEN_TTL.
+        user:
+          $ref: '#/components/schemas/OwnProfile'
+      additionalProperties: false
+    RefreshRequest:
+      type: object
+      properties:
+        refresh_token:
+          type: string
+          description: Текущий refresh-токен. Пустой/отсутствующий токен возвращает 401 INVALID_REFRESH_TOKEN.
+    RefreshResponse:
+      type: object
+      required:
+      - access_token
+      - refresh_token
+      - expires_in
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        expires_in:
+          type: integer
+          format: int64
+          description: Оставшийся срок access в секундах.
+      additionalProperties: false
+    FriendRequest:
+      type: object
+      required:
+      - id
+      - status
+      - created_at
+      properties:
+        id:
+          $ref: '#/components/schemas/UUID'
+        status:
+          type: string
+          enum:
+          - pending
+        created_at:
+          type: string
+          format: date-time
+      additionalProperties: false
+    FriendRequestItem:
+      type: object
+      required:
+      - id
+      - status
+      - created_at
+      - user
+      properties:
+        id:
+          $ref: '#/components/schemas/UUID'
+        status:
+          type: string
+          enum:
+          - pending
+        created_at:
+          type: string
+          format: date-time
+        user:
+          $ref: '#/components/schemas/UserPreview'
+      additionalProperties: false
+      description: user — отправитель для incoming, получатель для outgoing. Возвращаются только ожидающие
+        заявки.
+    FriendRequestPage:
+      type: object
+      required:
+      - items
+      - next_cursor
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/FriendRequestItem'
+          maxItems: 20
+        next_cursor:
+          $ref: '#/components/schemas/NextCursor'
+      additionalProperties: false
+    AcceptedRequest:
+      type: object
+      required:
+      - status
+      properties:
+        status:
+          type: string
+          enum:
+          - accepted
+      additionalProperties: false
+    IntrospectRequest:
+      type: object
+      properties:
+        access_token:
+          type: string
+          nullable: true
+          description: Пустое/отсутствующее значение означает active=false.
+      additionalProperties: false
+      nullable: true
+    ActiveIdentity:
+      type: object
+      required:
+      - active
+      - user_id
+      properties:
+        active:
+          type: boolean
+          enum:
+          - true
+        user_id:
+          $ref: '#/components/schemas/UUID'
+      additionalProperties: false
+    InactiveIdentity:
+      type: object
+      required:
+      - active
+      properties:
+        active:
+          type: boolean
+          enum:
+          - false
+      additionalProperties: false
+    Identity:
+      oneOf:
+      - $ref: '#/components/schemas/ActiveIdentity'
+      - $ref: '#/components/schemas/InactiveIdentity'
+      description: При active=false user_id отсутствует. Роль не выдаётся. Сбой БД возвращает 503, а не active=false.
+    PermissionCheckRequest:
+      type: object
+      required:
+      - access_token
+      - permission
+      properties:
+        access_token:
+          type: string
+        permission:
+          type: string
+          enum:
+          - catalog_submissions.review
+      additionalProperties: false
+    PermissionCheckResponse:
+      type: object
+      required:
+      - allowed
+      properties:
+        allowed:
+          type: boolean
+          description: true только для пользователя с ролью platform_moderator; роль не выдаётся.
+      additionalProperties: false
+    ProfileSectionCheck:
+      type: object
+      required:
+      - owner_id
+      - section
+      properties:
+        owner_id:
+          $ref: '#/components/schemas/UUID'
+        section:
+          type: string
+          enum:
+          - profile
+          - description
+          - friends
+          - communities
+        visibility:
+          type: string
+          enum:
+          - ''
+          nullable: true
+          description: Для этих разделов видимость читается из User Service. Непустое значение запрещено.
+      additionalProperties: false
+    CollectionAccessCheck:
+      type: object
+      required:
+      - owner_id
+      - section
+      - visibility
+      properties:
+        owner_id:
+          $ref: '#/components/schemas/UUID'
+        section:
+          type: string
+          enum:
+          - collection
+        visibility:
+          $ref: '#/components/schemas/Visibility'
+      additionalProperties: false
+      description: Только для Collection. Владелец и видимость берутся вызывающим сервисом из собственной БД;
+        существование коллекции проверяет Collection.
+    AccessCheck:
+      oneOf:
+      - $ref: '#/components/schemas/ProfileSectionCheck'
+      - $ref: '#/components/schemas/CollectionAccessCheck'
+    AccessChecksRequest:
+      type: object
+      required:
+      - checks
+      properties:
+        access_token:
+          type: string
+          nullable: true
+          description: Отсутствие, null или пустая строка означает гостя. Переданный неверный токен даёт 401.
+        checks:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccessCheck'
+          minItems: 1
+          maxItems: 100
+      additionalProperties: false
+    AccessDecision:
+      type: object
+      required:
+      - owner_id
+      - section
+      - exists
+      - allowed
+      - is_friend
+      - is_blocked
+      properties:
+        owner_id:
+          $ref: '#/components/schemas/UUID'
+        section:
+          type: string
+          enum:
+          - profile
+          - description
+          - friends
+          - communities
+          - collection
+        exists:
+          type: boolean
+          description: Существует владелец профиля; не проверяет существование коллекции.
+        allowed:
+          type: boolean
+          description: Итоговое разрешение по профилю и выбранному разделу/видимости. При false закрытый ресурс
+            выдавать нельзя.
+        is_friend:
+          type: boolean
+          description: Сохранённая дружба; может быть true одновременно с is_blocked=true.
+        is_blocked:
+          type: boolean
+          description: Есть блокировка хотя бы в одну сторону; её автор не раскрывается.
+      additionalProperties: false
+    AccessChecksResponse:
+      type: object
+      required:
+      - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccessDecision'
+          minItems: 1
+          maxItems: 100
+      additionalProperties: false
+      description: Один результат на каждую проверку в исходном порядке. При неизвестном владельце exists=false
+        и allowed=false. При ошибке обязательной проверки весь пакет возвращает 503 без частичных разрешений.
+    PreviewsRequest:
+      type: object
+      required:
+      - user_ids
+      properties:
+        user_ids:
+          type: array
+          items:
+            $ref: '#/components/schemas/UUID'
+          minItems: 1
+          maxItems: 100
+          uniqueItems: true
+      additionalProperties: false
+      description: Различные ненулевые UUID. Неизвестные поля запрещены.
+    PreviewsResponse:
+      type: object
+      required:
+      - items
+      - not_found_ids
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserPreview'
+          maxItems: 100
+        not_found_ids:
+          type: array
+          items:
+            $ref: '#/components/schemas/UUID'
+          maxItems: 100
+      additionalProperties: false
+      description: Существующие карточки в исходном порядке; отсутствующие ID перечислены отдельно. Приватность
+        и блокировки не скрывают публичные карточки.
+    BlockedIDsResponse:
+      type: object
+      required:
+      - items
+      - next_cursor
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/UUID'
+          maxItems: 20
+        next_cursor:
+          $ref: '#/components/schemas/NextCursor'
+      additionalProperties: false
+    HealthResponse:
+      type: object
+      required:
+      - status
+      properties:
+        status:
+          type: string
+          enum:
+          - ok
+      additionalProperties: false
+    ReadyResponse:
+      type: object
+      required:
+      - status
+      properties:
+        status:
+          type: string
+          enum:
+          - ready
+      additionalProperties: false
+    ErrorEnvelope:
+      type: object
+      required:
+      - error
+      - request_id
+      properties:
+        error:
+          type: object
+          required:
+          - code
+          - message
+          properties:
+            code:
+              type: string
+              enum:
+              - INVALID_JSON
+              - INVALID_REGISTRATION
+              - ACCOUNT_EXISTS
+              - INVALID_LOGIN
+              - BAD_CREDENTIALS
+              - LOGIN_LOCKED
+              - UNAUTHORIZED
+              - SESSION_REVOKED
+              - SESSION_EXPIRED
+              - INVALID_REFRESH_TOKEN
+              - PROFILE_NOT_FOUND
+              - QUERY_REQUIRED
+              - QUERY_TOO_SHORT
+              - INVALID_LIMIT
+              - INVALID_CURSOR
+              - IDEMPOTENCY_KEY_REQUIRED
+              - INVALID_IDEMPOTENCY_KEY
+              - IDEMPOTENCY_CONFLICT
+              - INVALID_REQUEST
+              - SELF_ACTION
+              - INTERACTION_BLOCKED
+              - FORBIDDEN
+              - FRIEND_REQUEST_NOT_FOUND
+              - ALREADY_FRIENDS
+              - REQUEST_ALREADY_EXISTS
+              - INCOMING_REQUEST_EXISTS
+              - FRIEND_REQUEST_NOT_PENDING
+              - SERVICE_UNAUTHORIZED
+              - SERVICE_UNAVAILABLE
+              - INTERNAL_ERROR
+              - INVALID_DIRECTION
+            message:
+              type: string
+              description: Человекочитаемое сообщение; клиент принимает решения по code.
+            fields:
+              type: object
+              additionalProperties:
+                type: string
+              description: Ошибки всех полей регистрации/входа, по одному сообщению на поле.
+            details:
+              type: object
+              required:
+              - friend_request_id
+              properties:
+                friend_request_id:
+                  $ref: '#/components/schemas/UUID'
+              additionalProperties: false
+              description: ID уже существующей исходящей/входящей заявки, доступный только участникам.
+          additionalProperties: false
+        request_id:
+          type: string
+          example: req_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+          description: Совпадает с X-Request-ID; сервер генерирует новый ID для каждого HTTP-запроса.
+      additionalProperties: false
+  examples:
+    INVALID_JSON:
+      value:
+        error:
+          code: INVALID_JSON
+          message: Некорректное тело запроса
+        request_id: req_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+    INVALID_REGISTRATION:
+      value:
+        error:
+          code: INVALID_REGISTRATION
+          message: Некорректные данные регистрации
+          fields:
+            email: Введите корректный адрес электронной почты
+            password_confirmation: Пароли не совпадают
+        request_id: req_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+    ACCOUNT_EXISTS:
+      value:
+        error:
+          code: ACCOUNT_EXISTS
+          message: Email или имя пользователя уже заняты
+          fields:
+            email: Этот адрес электронной почты уже используется
+        request_id: req_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+    INVALID_LOGIN:
+      value:
+        error:
+          code: INVALID_LOGIN
+          message: Некорректные данные входа
+          fields:
+            identifier: Введите адрес электронной почты или имя пользователя
+        request_id: req_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+    BAD_CREDENTIALS:
+      value:
+        error:
+          code: BAD_CREDENTIALS
+          message: Неверный логин или пароль
+        request_id: req_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+    LOGIN_LOCKED:
+      value:
+        error:
+          code: LOGIN_LOCKED
+          message: Вход по этому идентификатору заблокирован на 1 час
+        request_id: req_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+    UNAUTHORIZED:
+      value:
+        error:
+          code: UNAUTHORIZED
+          message: Требуется авторизация
+        request_id: req_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+    SESSION_REVOKED:
+      value:
+        error:
+          code: SESSION_REVOKED
+          message: Сессия отозвана
+        request_id: req_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+    SESSION_EXPIRED:
+      value:
+        error:
+          code: SESSION_EXPIRED
+          message: Срок сессии истёк
+        request_id: req_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+    INVALID_REFRESH_TOKEN:
+      value:
+        error:
+          code: INVALID_REFRESH_TOKEN
+          message: Недействительный refresh-токен
+        request_id: req_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+    PROFILE_NOT_FOUND:
+      value:
+        error:
+          code: PROFILE_NOT_FOUND
+          message: Профиль не найден
+        request_id: req_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+    QUERY_REQUIRED:
+      value:
+        error:
+          code: QUERY_REQUIRED
+          message: Укажите имя для поиска
+        request_id: req_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+    QUERY_TOO_SHORT:
+      value:
+        error:
+          code: QUERY_TOO_SHORT
+          message: Введите не менее двух символов
+        request_id: req_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+    INVALID_LIMIT:
+      value:
+        error:
+          code: INVALID_LIMIT
+          message: Размер страницы должен быть от 1 до 20
+        request_id: req_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+    INVALID_CURSOR:
+      value:
+        error:
+          code: INVALID_CURSOR
+          message: Некорректный курсор страницы
+        request_id: req_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+    IDEMPOTENCY_KEY_REQUIRED:
+      value:
+        error:
+          code: IDEMPOTENCY_KEY_REQUIRED
+          message: Укажите заголовок Idempotency-Key
+        request_id: req_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+    INVALID_IDEMPOTENCY_KEY:
+      value:
+        error:
+          code: INVALID_IDEMPOTENCY_KEY
+          message: Некорректный Idempotency-Key
+        request_id: req_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+    IDEMPOTENCY_CONFLICT:
+      value:
+        error:
+          code: IDEMPOTENCY_CONFLICT
+          message: Idempotency-Key уже использован для другого запроса
+        request_id: req_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+    INVALID_REQUEST:
+      value:
+        error:
+          code: INVALID_REQUEST
+          message: Некорректные параметры запроса
+        request_id: req_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+    SELF_ACTION:
+      value:
+        error:
+          code: SELF_ACTION
+          message: Нельзя выполнить действие с самим собой
+        request_id: req_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+    INTERACTION_BLOCKED:
+      value:
+        error:
+          code: INTERACTION_BLOCKED
+          message: Взаимодействие недоступно
+        request_id: req_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+    FORBIDDEN:
+      value:
+        error:
+          code: FORBIDDEN
+          message: Недостаточно прав
+        request_id: req_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+    FRIEND_REQUEST_NOT_FOUND:
+      value:
+        error:
+          code: FRIEND_REQUEST_NOT_FOUND
+          message: Заявка не найдена
+        request_id: req_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+    ALREADY_FRIENDS:
+      value:
+        error:
+          code: ALREADY_FRIENDS
+          message: Вы уже друзья
+        request_id: req_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+    REQUEST_ALREADY_EXISTS:
+      value:
+        error:
+          code: REQUEST_ALREADY_EXISTS
+          message: Заявка уже отправлена
+          details:
+            friend_request_id: 33333333-3333-4333-8333-333333333333
+        request_id: req_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+    INCOMING_REQUEST_EXISTS:
+      value:
+        error:
+          code: INCOMING_REQUEST_EXISTS
+          message: У вас уже есть входящая заявка от этого пользователя
+          details:
+            friend_request_id: 33333333-3333-4333-8333-333333333333
+        request_id: req_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+    FRIEND_REQUEST_NOT_PENDING:
+      value:
+        error:
+          code: FRIEND_REQUEST_NOT_PENDING
+          message: Заявка больше не ожидает ответа
+        request_id: req_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+    SERVICE_UNAUTHORIZED:
+      value:
+        error:
+          code: SERVICE_UNAUTHORIZED
+          message: Требуется служебная авторизация
+        request_id: req_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+    SERVICE_UNAVAILABLE:
+      value:
+        error:
+          code: SERVICE_UNAVAILABLE
+          message: Проверка доступа временно недоступна
+        request_id: req_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+    INTERNAL_ERROR:
+      value:
+        error:
+          code: INTERNAL_ERROR
+          message: Внутренняя ошибка сервера
+        request_id: req_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+    INVALID_DIRECTION:
+      value:
+        error:
+          code: INVALID_DIRECTION
+          message: Укажите direction=incoming или outgoing
+        request_id: req_aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
+  responses:
+    InternalError:
+      description: 'Возможные error.code: `INTERNAL_ERROR`.'
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestID'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          examples:
+            INTERNAL_ERROR:
+              $ref: '#/components/examples/INTERNAL_ERROR'
+    ServiceUnavailable:
+      description: 'Возможные error.code: `SERVICE_UNAVAILABLE`.'
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestID'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          examples:
+            SERVICE_UNAVAILABLE:
+              $ref: '#/components/examples/SERVICE_UNAVAILABLE'
+    InvalidJSON:
+      description: 'Возможные error.code: `INVALID_JSON`.'
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestID'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          examples:
+            INVALID_JSON:
+              $ref: '#/components/examples/INVALID_JSON'
+    UserSessionError:
+      description: 'Возможные error.code: `UNAUTHORIZED`, `SESSION_REVOKED`, `SESSION_EXPIRED`.'
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestID'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          examples:
+            UNAUTHORIZED:
+              $ref: '#/components/examples/UNAUTHORIZED'
+            SESSION_REVOKED:
+              $ref: '#/components/examples/SESSION_REVOKED'
+            SESSION_EXPIRED:
+              $ref: '#/components/examples/SESSION_EXPIRED'
+    NoStoreUserSessionError:
+      description: 'Возможные error.code: `UNAUTHORIZED`, `SESSION_REVOKED`, `SESSION_EXPIRED`.'
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestID'
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          examples:
+            UNAUTHORIZED:
+              $ref: '#/components/examples/UNAUTHORIZED'
+            SESSION_REVOKED:
+              $ref: '#/components/examples/SESSION_REVOKED'
+            SESSION_EXPIRED:
+              $ref: '#/components/examples/SESSION_EXPIRED'
+    NoStoreServiceUnavailable:
+      description: 'Возможные error.code: `SERVICE_UNAVAILABLE`.'
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestID'
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          examples:
+            SERVICE_UNAVAILABLE:
+              $ref: '#/components/examples/SERVICE_UNAVAILABLE'
+    NoStoreInternalError:
+      description: 'Возможные error.code: `INTERNAL_ERROR`.'
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestID'
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          examples:
+            INTERNAL_ERROR:
+              $ref: '#/components/examples/INTERNAL_ERROR'
+    NoStoreInvalidJSON:
+      description: 'Возможные error.code: `INVALID_JSON`.'
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestID'
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          examples:
+            INVALID_JSON:
+              $ref: '#/components/examples/INVALID_JSON'
+    NoStoreServiceAuthError:
+      description: 'Возможные error.code: `SERVICE_UNAUTHORIZED`.'
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestID'
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          examples:
+            SERVICE_UNAUTHORIZED:
+              $ref: '#/components/examples/SERVICE_UNAUTHORIZED'
+    NoStoreServiceAndUserAuthError:
+      description: 'Возможные error.code: `SERVICE_UNAUTHORIZED`, `UNAUTHORIZED`, `SESSION_REVOKED`, `SESSION_EXPIRED`.'
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestID'
+        Cache-Control:
+          $ref: '#/components/headers/NoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          examples:
+            SERVICE_UNAUTHORIZED:
+              $ref: '#/components/examples/SERVICE_UNAUTHORIZED'
+            UNAUTHORIZED:
+              $ref: '#/components/examples/UNAUTHORIZED'
+            SESSION_REVOKED:
+              $ref: '#/components/examples/SESSION_REVOKED'
+            SESSION_EXPIRED:
+              $ref: '#/components/examples/SESSION_EXPIRED'

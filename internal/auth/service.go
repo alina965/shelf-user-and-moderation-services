@@ -5,8 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"net/mail"
-	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -62,6 +60,7 @@ type UserRepository interface {
 	GetProfile(ctx context.Context, ownerID, viewerID uuid.UUID) (*domain.ProfileData, error)
 	SearchUsers(ctx context.Context, query string, limit int, after *domain.UserSearchCursor) ([]domain.UserSearchRow, error)
 	CreateUser(ctx context.Context, user *domain.User) error
+	RegistrationConflicts(ctx context.Context, email, username string) (map[string]string, error)
 	GetUserById(ctx context.Context, id uuid.UUID) (*domain.User, error)
 	GetUserByIdentifier(ctx context.Context, identifier string) (*domain.User, error)
 	GetProfilePrivacy(ctx context.Context, id uuid.UUID) (*domain.ProfilePrivacy, error)
@@ -139,31 +138,34 @@ func (s *Service) SearchUsers(ctx context.Context, query string, limit int, curs
 	return response, nil
 }
 
-var usernamePattern = regexp.MustCompile(`^[a-zA-Z0-9_.]{1,32}$`)
-
 func (s *Service) Register(ctx context.Context, email, password, passwordConfirmation, username string) (*domain.RegisterResponse, error) {
 	email = strings.TrimSpace(email)
 	username = strings.TrimSpace(username)
 
-	address, err := mail.ParseAddress(email)
-	if err != nil || address.Address != email || utf8.RuneCountInString(email) > 254 {
-		return nil, domain.ErrInvalidRegistration
+	fields := registrationErrors(email, username, password, passwordConfirmation)
+	invalid := len(fields) > 0
+	checkEmail, checkUsername := "", ""
+	if fields["email"] == "" {
+		checkEmail = email
 	}
-
-	if !usernamePattern.MatchString(username) ||
-		strings.HasPrefix(username, ".") ||
-		strings.HasSuffix(username, ".") ||
-		strings.Contains(username, "..") {
-		return nil, domain.ErrInvalidRegistration
+	if fields["username"] == "" {
+		checkUsername = username
 	}
-
-	passwordLength := utf8.RuneCountInString(password)
-	if passwordLength < 8 || passwordLength > 32 || password != passwordConfirmation {
-		return nil, domain.ErrInvalidRegistration
+	if checkEmail != "" || checkUsername != "" {
+		conflicts, err := s.userRepository.RegistrationConflicts(ctx, checkEmail, checkUsername)
+		if err != nil {
+			return nil, err
+		}
+		for field, message := range conflicts {
+			fields[field] = message
+		}
 	}
-
-	if len(password) > 72 {
-		return nil, domain.ErrInvalidRegistration
+	if len(fields) > 0 {
+		cause := domain.ErrAccountExists
+		if invalid {
+			cause = domain.ErrInvalidRegistration
+		}
+		return nil, &domain.ValidationError{Cause: cause, Fields: fields}
 	}
 
 	hash, err := s.hasher.Hash(password)
@@ -180,6 +182,19 @@ func (s *Service) Register(ctx context.Context, email, password, passwordConfirm
 	}
 
 	if err := s.userRepository.CreateUser(ctx, user); err != nil {
+		if errors.Is(err, domain.ErrAccountExists) {
+			conflicts, lookupErr := s.userRepository.RegistrationConflicts(ctx, email, username)
+			if lookupErr != nil {
+				return nil, lookupErr
+			}
+			var validation *domain.ValidationError
+			if errors.As(err, &validation) {
+				for field, message := range validation.Fields {
+					conflicts[field] = message
+				}
+			}
+			return nil, &domain.ValidationError{Cause: domain.ErrAccountExists, Fields: conflicts}
+		}
 		return nil, err
 	}
 
@@ -191,16 +206,8 @@ func (s *Service) Register(ctx context.Context, email, password, passwordConfirm
 func (s *Service) Login(ctx context.Context, identifier, password string) (*domain.LoginResponse, error) {
 	identifier = strings.ToLower(strings.TrimSpace(identifier))
 
-	if identifier == "" || password == "" || utf8.RuneCountInString(password) > 32 {
-		return nil, domain.ErrInvalidLogin
-	}
-	if strings.Contains(identifier, "@") {
-		address, err := mail.ParseAddress(identifier)
-		if err != nil || address.Address != identifier || utf8.RuneCountInString(identifier) > 254 {
-			return nil, domain.ErrInvalidLogin
-		}
-	} else if !usernamePattern.MatchString(identifier) || strings.HasPrefix(identifier, ".") || strings.HasSuffix(identifier, ".") || strings.Contains(identifier, "..") {
-		return nil, domain.ErrInvalidLogin
+	if fields := loginErrors(identifier, password); len(fields) > 0 {
+		return nil, &domain.ValidationError{Cause: domain.ErrInvalidLogin, Fields: fields}
 	}
 	if err := s.loginAttemptsRepository.CheckLocked(ctx, identifier); err != nil {
 		return nil, err

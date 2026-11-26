@@ -175,6 +175,20 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 }
 
 func writeServiceError(c *gin.Context, err error) {
+	var validation *domain.ValidationError
+	if errors.As(err, &validation) {
+		status, code, message := http.StatusBadRequest, "INVALID_REGISTRATION", "Некорректные данные регистрации"
+		if errors.Is(err, domain.ErrInvalidLogin) {
+			code, message = "INVALID_LOGIN", "Некорректные данные входа"
+		}
+		if errors.Is(err, domain.ErrAccountExists) {
+			status, code, message = http.StatusConflict, "ACCOUNT_EXISTS", "Email или имя пользователя уже заняты"
+		}
+		c.AbortWithStatusJSON(status, gin.H{"request_id": ensureRequestID(c), "error": gin.H{
+			"code": code, "message": message, "fields": validation.Fields,
+		}})
+		return
+	}
 	switch {
 	case errors.Is(err, domain.ErrAccessCheckUnavailable):
 		writeError(c, http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", "Проверка доступа временно недоступна")

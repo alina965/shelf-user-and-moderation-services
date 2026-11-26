@@ -35,9 +35,10 @@ func (r *UserRepository) CreateUser(ctx context.Context, user *domain.User) erro
 	if pgErr, ok := errors.AsType[*pgconn.PgError](err); ok && pgErr.Code == "23505" {
 		switch pgErr.ConstraintName {
 		case "users_email_key",
-			"users_email_ci_unique",
-			"users_username_ci_unique":
-			return domain.ErrAccountExists
+			"users_email_ci_unique":
+			return &domain.ValidationError{Cause: domain.ErrAccountExists, Fields: map[string]string{"email": domain.EmailTakenMessage}}
+		case "users_username_ci_unique":
+			return &domain.ValidationError{Cause: domain.ErrAccountExists, Fields: map[string]string{"username": domain.UsernameTakenMessage}}
 		}
 	}
 
@@ -65,6 +66,23 @@ func (r *UserRepository) GetUserById(ctx context.Context, id uuid.UUID) (*domain
 	}
 
 	return user, nil
+}
+
+func (r *UserRepository) RegistrationConflicts(ctx context.Context, email, username string) (map[string]string, error) {
+	var emailExists, usernameExists bool
+	err := r.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM users WHERE $1<>'' AND lower(email)=lower($1)),
+		EXISTS(SELECT 1 FROM users WHERE $2<>'' AND lower(username)=lower($2))`, email, username).Scan(&emailExists, &usernameExists)
+	if err != nil {
+		return nil, err
+	}
+	fields := make(map[string]string)
+	if emailExists {
+		fields["email"] = domain.EmailTakenMessage
+	}
+	if usernameExists {
+		fields["username"] = domain.UsernameTakenMessage
+	}
+	return fields, nil
 }
 
 func (r *UserRepository) GetUserByIdentifier(ctx context.Context, identifier string) (*domain.User, error) {

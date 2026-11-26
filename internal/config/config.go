@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -15,7 +14,6 @@ const (
 	defaultAddress         = ":8080"
 	defaultAccessTokenTTL  = time.Minute * 15
 	defaultRefreshTokenTTL = 7 * 24 * time.Hour
-	defaultBcryptCost      = 10
 )
 
 type Config struct {
@@ -24,7 +22,6 @@ type Config struct {
 	JwtSecret             string
 	AccessTokenTTL        time.Duration
 	RefreshTokenTTL       time.Duration
-	BcryptCost            int
 	InternalServiceTokens map[string]string
 }
 
@@ -51,10 +48,6 @@ func New(path string) (*Config, error) {
 	if err != nil {
 		refreshTokenTTL = defaultRefreshTokenTTL
 	}
-	bcryptCost, err := strconv.Atoi(os.Getenv("BCRYPT_COST"))
-	if err != nil {
-		bcryptCost = defaultBcryptCost
-	}
 	internalTokens := make(map[string]string)
 	if value := os.Getenv("INTERNAL_SERVICE_TOKENS"); value != "" {
 		if err := json.Unmarshal([]byte(value), &internalTokens); err != nil || internalTokens == nil {
@@ -78,7 +71,6 @@ func New(path string) (*Config, error) {
 		JwtSecret:             jwtSecret,
 		AccessTokenTTL:        accessTokenTTL,
 		RefreshTokenTTL:       refreshTokenTTL,
-		BcryptCost:            bcryptCost,
 		InternalServiceTokens: internalTokens,
 	}, nil
 }

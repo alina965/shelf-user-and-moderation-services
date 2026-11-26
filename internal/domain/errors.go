@@ -2,6 +2,18 @@ package domain
 
 import "errors"
 
+type ValidationError struct {
+	Cause  error
+	Fields map[string]string
+}
+
+func (e *ValidationError) Error() string { return e.Cause.Error() }
+
+func (e *ValidationError) Unwrap() error { return e.Cause }
+
+const EmailTakenMessage = "Учётная запись с таким адресом электронной почты уже существует"
+const UsernameTakenMessage = "Это имя пользователя уже занято"
+
 var (
 	ErrAccessCheckUnavailable = errors.New("access check unavailable")
 	ErrProfileNotFound        = errors.New("profile not found")
