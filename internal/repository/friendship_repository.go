@@ -2,7 +2,9 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 
 	"github.com/alina965/user-service/internal/domain"
 	"github.com/google/uuid"
@@ -49,12 +51,122 @@ func pairState(ctx context.Context, tx pgx.Tx, first, second uuid.UUID) (bool, b
 	return blocked, friends, err
 }
 
-func (r *FriendshipRepository) Send(ctx context.Context, sender, recipient uuid.UUID) (*domain.FriendRequest, error) {
+type storedFriendRequest struct {
+	Request    *domain.FriendRequest `json:"request,omitempty"`
+	Code       string                `json:"code,omitempty"`
+	ExistingID uuid.UUID             `json:"existing_id,omitempty"`
+}
+
+func storeFriendRequestResult(request *domain.FriendRequest, err error) (storedFriendRequest, bool) {
+	if err == nil {
+		return storedFriendRequest{Request: request}, true
+	}
+	var conflict *domain.RequestConflict
+	if errors.As(err, &conflict) {
+		code := "REQUEST_ALREADY_EXISTS"
+		if conflict.Incoming {
+			code = "INCOMING_REQUEST_EXISTS"
+		}
+		return storedFriendRequest{Code: code, ExistingID: conflict.ID}, true
+	}
+	for _, item := range []struct {
+		err  error
+		code string
+	}{
+		{domain.ErrSelfFriendship, "SELF_ACTION"},
+		{domain.ErrProfileNotFound, "PROFILE_NOT_FOUND"},
+		{domain.ErrInteractionBlocked, "INTERACTION_BLOCKED"},
+		{domain.ErrAlreadyFriends, "ALREADY_FRIENDS"},
+	} {
+		if errors.Is(err, item.err) {
+			return storedFriendRequest{Code: item.code}, true
+		}
+	}
+	return storedFriendRequest{}, false
+}
+
+func (result storedFriendRequest) outcome() (*domain.FriendRequest, error) {
+	switch result.Code {
+	case "":
+		if result.Request == nil || result.Request.ID == uuid.Nil {
+			return nil, fmt.Errorf("invalid stored friend request")
+		}
+		return result.Request, nil
+	case "SELF_ACTION":
+		return nil, domain.ErrSelfFriendship
+	case "PROFILE_NOT_FOUND":
+		return nil, domain.ErrProfileNotFound
+	case "INTERACTION_BLOCKED":
+		return nil, domain.ErrInteractionBlocked
+	case "ALREADY_FRIENDS":
+		return nil, domain.ErrAlreadyFriends
+	case "REQUEST_ALREADY_EXISTS", "INCOMING_REQUEST_EXISTS":
+		if result.ExistingID == uuid.Nil {
+			return nil, fmt.Errorf("invalid stored request conflict")
+		}
+		return nil, &domain.RequestConflict{ID: result.ExistingID, Incoming: result.Code == "INCOMING_REQUEST_EXISTS"}
+	default:
+		return nil, fmt.Errorf("invalid stored friend request result")
+	}
+}
+
+func (r *FriendshipRepository) Send(ctx context.Context, sender, recipient uuid.UUID, key string) (*domain.FriendRequest, error) {
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return nil, err
 	}
 	defer tx.Rollback(ctx)
+	const operation = "friend_requests.send"
+	_, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, sender.String()+":"+operation+":"+key)
+	if err != nil {
+		return nil, err
+	}
+	_, err = tx.Exec(ctx, `DELETE FROM idempotency_keys WHERE user_id=$1 AND operation=$2 AND key=$3 AND expires_at<=clock_timestamp()`, sender, operation, key)
+	if err != nil {
+		return nil, err
+	}
+	var storedRecipient uuid.UUID
+	var response []byte
+	err = tx.QueryRow(ctx, `SELECT recipient_id,response FROM idempotency_keys WHERE user_id=$1 AND operation=$2 AND key=$3`, sender, operation, key).Scan(&storedRecipient, &response)
+	if err == nil {
+		if storedRecipient != recipient {
+			return nil, domain.ErrIdempotencyConflict
+		}
+		var saved storedFriendRequest
+		if err := json.Unmarshal(response, &saved); err != nil {
+			return nil, err
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return nil, err
+		}
+		return saved.outcome()
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return nil, err
+	}
+	request, resultErr := createFriendRequest(ctx, tx, sender, recipient)
+	result, ok := storeFriendRequestResult(request, resultErr)
+	if !ok {
+		return nil, resultErr
+	}
+	response, err = json.Marshal(result)
+	if err != nil {
+		return nil, err
+	}
+	_, err = tx.Exec(ctx, `INSERT INTO idempotency_keys (user_id,operation,key,recipient_id,response) VALUES ($1,$2,$3,$4,$5)`, sender, operation, key, recipient, response)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return request, resultErr
+}
+
+func createFriendRequest(ctx context.Context, tx pgx.Tx, sender, recipient uuid.UUID) (*domain.FriendRequest, error) {
+	if sender == recipient {
+		return nil, domain.ErrSelfFriendship
+	}
 	if err := lockFriendPair(ctx, tx, sender, recipient); err != nil {
 		return nil, err
 	}
@@ -82,9 +194,6 @@ func (r *FriendshipRepository) Send(ctx context.Context, sender, recipient uuid.
 	err = tx.QueryRow(ctx, `INSERT INTO friend_requests (id,sender_id,recipient_id)
 		VALUES ($1,$2,$3) RETURNING status,created_at`, request.ID, sender, recipient).Scan(&request.Status, &request.CreatedAt)
 	if err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
 	return request, nil
@@ -142,7 +251,7 @@ func (r *FriendshipRepository) Resolve(ctx context.Context, actor, requestID uui
 		}
 		status = "accepted"
 	} else {
-		if status == "rejected" || status == "cancelled" {
+		if (status == "rejected" && actor == recipient) || (status == "cancelled" && actor == sender) {
 			return tx.Commit(ctx)
 		}
 		if status != "pending" {

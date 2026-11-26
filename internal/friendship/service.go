@@ -6,13 +6,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 
 	"github.com/alina965/user-service/internal/domain"
 	"github.com/google/uuid"
 )
 
 type Repository interface {
-	Send(context.Context, uuid.UUID, uuid.UUID) (*domain.FriendRequest, error)
+	Send(context.Context, uuid.UUID, uuid.UUID, string) (*domain.FriendRequest, error)
 	Resolve(context.Context, uuid.UUID, uuid.UUID, bool) error
 	Remove(context.Context, uuid.UUID, uuid.UUID) error
 	Requests(context.Context, uuid.UUID, string, int, *domain.FriendRequestsCursor) ([]domain.FriendRequestItem, error)
@@ -37,7 +38,7 @@ func storageError(err error) error {
 	if errors.As(err, &conflict) {
 		return err
 	}
-	for _, expected := range []error{domain.ErrProfileNotFound, domain.ErrRequestNotFound, domain.ErrRequestRecipient,
+	for _, expected := range []error{domain.ErrSelfFriendship, domain.ErrIdempotencyConflict, domain.ErrProfileNotFound, domain.ErrRequestNotFound, domain.ErrRequestRecipient,
 		domain.ErrRequestState, domain.ErrInteractionBlocked, domain.ErrAlreadyFriends, domain.ErrFriendsHidden} {
 		if errors.Is(err, expected) {
 			return err
@@ -46,11 +47,16 @@ func storageError(err error) error {
 	return fmt.Errorf("%w: %w", domain.ErrAccessCheckUnavailable, err)
 }
 
-func (s *Service) Send(ctx context.Context, sender, recipient uuid.UUID) (*domain.FriendRequest, error) {
-	if sender == recipient {
-		return nil, domain.ErrSelfFriendship
+var idempotencyKeyPattern = regexp.MustCompile(`^[A-Za-z0-9._:-]{1,128}$`)
+
+func (s *Service) Send(ctx context.Context, sender, recipient uuid.UUID, key string) (*domain.FriendRequest, error) {
+	if key == "" {
+		return nil, domain.ErrIdempotencyKeyRequired
 	}
-	request, err := s.repository.Send(ctx, sender, recipient)
+	if !idempotencyKeyPattern.MatchString(key) {
+		return nil, domain.ErrInvalidIdempotencyKey
+	}
+	request, err := s.repository.Send(ctx, sender, recipient, key)
 	return request, storageError(err)
 }
 

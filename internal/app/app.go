@@ -9,6 +9,7 @@ import (
 	"github.com/alina965/user-service/internal/auth"
 	"github.com/alina965/user-service/internal/config"
 	"github.com/alina965/user-service/internal/friendship"
+	"github.com/alina965/user-service/internal/interservice"
 	"github.com/alina965/user-service/internal/jwt"
 	"github.com/alina965/user-service/internal/repository"
 	"github.com/alina965/user-service/internal/security"
@@ -37,9 +38,13 @@ func New(config *config.Config) (*App, error) {
 	userService := auth.NewAuthService(hasher, jwtService, tokenRepo, userRepo, attemptsRepo, config.RefreshTokenTTL)
 	authHandler := api.NewAuthHandler(userService)
 	friendshipHandler := api.NewFriendshipHandler(friendship.NewService(repository.NewFriendshipRepository(db)))
+	internalHandler := api.NewInternalHandler(interservice.NewService(repository.NewInternalRepository(db), jwtService))
+	healthHandler := api.NewHealthHandler(db)
 
 	router := gin.Default()
 	router.Use(api.RequestIDMiddleware())
+	router.GET("/health", healthHandler.Health)
+	router.GET("/ready", healthHandler.Ready)
 
 	router.POST("/auth/register", authHandler.Register)
 	router.POST("/auth/login", authHandler.Login)
@@ -57,6 +62,12 @@ func New(config *config.Config) (*App, error) {
 	router.PUT("/users/me/blocks/:user_id", api.AuthMiddleware(jwtService, userService), friendshipHandler.Block)
 	router.DELETE("/users/me/blocks/:user_id", api.AuthMiddleware(jwtService, userService), friendshipHandler.Unblock)
 	router.GET("/users/me/blocks", api.AuthMiddleware(jwtService, userService), friendshipHandler.Blocks)
+	internal := router.Group("/internal", api.ServiceAuthMiddleware(config.InternalServiceTokens))
+	internal.POST("/auth/introspect", internalHandler.Introspect)
+	internal.POST("/auth/permission-check", api.RequireServices("moderation"), internalHandler.CheckPermission)
+	internal.POST("/users/access-check", api.RequireServices("collection", "community"), internalHandler.AccessChecks)
+	internal.POST("/users/previews", internalHandler.Previews)
+	internal.GET("/users/:id/blocked-user-ids", api.RequireServices("community"), internalHandler.BlockedIDs)
 
 	return &App{db: db, server: &http.Server{Addr: config.Addr, Handler: router}}, nil
 }

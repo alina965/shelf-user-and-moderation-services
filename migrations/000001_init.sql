@@ -22,6 +22,20 @@ CREATE TABLE IF NOT EXISTS sessions (
     UNIQUE (id, user_id)
 );
 
+CREATE TABLE IF NOT EXISTS idempotency_keys (
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    operation TEXT NOT NULL,
+    key TEXT NOT NULL CHECK (length(key) BETWEEN 1 AND 128),
+    recipient_id UUID NOT NULL,
+    response JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+    expires_at TIMESTAMPTZ NOT NULL DEFAULT (clock_timestamp() + interval '24 hours'),
+    PRIMARY KEY (user_id, operation, key),
+    CHECK (expires_at > created_at)
+);
+
+CREATE INDEX IF NOT EXISTS idempotency_keys_expires_at_idx ON idempotency_keys(expires_at);
+
 CREATE TABLE IF NOT EXISTS refresh_tokens (
     id UUID PRIMARY KEY,
     token TEXT NOT NULL UNIQUE,

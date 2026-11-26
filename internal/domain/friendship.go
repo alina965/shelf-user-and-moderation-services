@@ -8,14 +8,17 @@ import (
 )
 
 var (
-	ErrSelfFriendship     = errors.New("cannot act on yourself")
-	ErrInteractionBlocked = errors.New("interaction blocked")
-	ErrAlreadyFriends     = errors.New("already friends")
-	ErrRequestNotFound    = errors.New("friend request not found")
-	ErrRequestState       = errors.New("friend request is no longer pending")
-	ErrRequestRecipient   = errors.New("only recipient may accept request")
-	ErrInvalidDirection   = errors.New("invalid friend request direction")
-	ErrFriendsHidden      = errors.New("friends list is private")
+	ErrIdempotencyKeyRequired = errors.New("idempotency key required")
+	ErrInvalidIdempotencyKey  = errors.New("invalid idempotency key")
+	ErrIdempotencyConflict    = errors.New("idempotency key used for another request")
+	ErrSelfFriendship         = errors.New("cannot act on yourself")
+	ErrInteractionBlocked     = errors.New("interaction blocked")
+	ErrAlreadyFriends         = errors.New("already friends")
+	ErrRequestNotFound        = errors.New("friend request not found")
+	ErrRequestState           = errors.New("friend request is no longer pending")
+	ErrRequestRecipient       = errors.New("only recipient may accept request")
+	ErrInvalidDirection       = errors.New("invalid friend request direction")
+	ErrFriendsHidden          = errors.New("friends list is private")
 )
 
 type RequestConflict struct {

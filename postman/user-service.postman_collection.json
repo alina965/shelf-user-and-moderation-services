@@ -2,7 +2,7 @@
   "info": {
     "name": "User Service",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "description": "Импортируйте коллекцию и запускайте все запросы по порядку через Run collection. Сервис должен работать с PostgreSQL и применённой migrations/000001_init.sql. base_url по умолчанию http://localhost:8080, без /api/v1. Каждый полный запуск создаёт новые тестовые аккаунты, которые остаются в БД. Токены и курсоры сохраняются автоматически; тестовые переменные копируются в локальную область, чтобы environment/data не переопределяли их. Запросы 1–51 проверяют регистрацию, вход, профили, refresh, выход, блокировку входа и поиск. 52–92 — заявки и дружбу. 93 и далее — блокировки, независимое снятие встречной блокировки, отмену заявок, сохранение дружбы, пагинацию и авторизацию."
+    "description": "Импортируйте коллекцию и запускайте все запросы по порядку через Run collection. Сервис должен работать с PostgreSQL и применённой migrations/000001_init.sql. base_url по умолчанию http://localhost:8080, без /api/v1. Каждый полный запуск создаёт новые тестовые аккаунты, которые остаются в БД. Токены и курсоры сохраняются автоматически; тестовые переменные копируются в локальную область, чтобы environment/data не переопределяли их. Запросы 1–51 проверяют регистрацию, вход, профили, refresh, выход, блокировку входа и поиск. 52–92 — заявки и дружбу. 93 и далее — блокировки, независимое снятие встречной блокировки, отмену заявок, сохранение дружбы, пагинацию и авторизацию. В папке «Внутреннее API» задайте переменные collection_service_token, community_service_token, catalog_service_token и moderation_service_token из конфигурации INTERNAL_SERVICE_TOKENS сервера. Эти секреты не совпадают с пользовательскими access-токенами. Сообщения исключены из MVP, проверки Messaging отсутствуют. Метод permission-check проверяется с обычным пользователем (allowed=false); сценарий allowed=true требует пользователя с ролью platform_moderator, назначенной доверенным способом вне публичной регистрации."
   },
   "variable": [
     {
@@ -83,6 +83,38 @@
     },
     {
       "key": "blocks_cursor",
+      "value": ""
+    },
+    {
+      "key": "collection_service_token",
+      "value": ""
+    },
+    {
+      "key": "community_service_token",
+      "value": ""
+    },
+    {
+      "key": "catalog_service_token",
+      "value": ""
+    },
+    {
+      "key": "moderation_service_token",
+      "value": ""
+    },
+    {
+      "key": "internal_blocks_cursor",
+      "value": ""
+    },
+    {
+      "key": "idem_key",
+      "value": ""
+    },
+    {
+      "key": "idem_request_id",
+      "value": ""
+    },
+    {
+      "key": "idem_response",
       "value": ""
     }
   ],
@@ -2523,6 +2555,10 @@
           {
             "key": "Authorization",
             "value": "Bearer {{friend_access_token}}"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "{{request_idempotency_key}}"
           }
         ],
         "auth": {
@@ -2560,6 +2596,10 @@
           {
             "key": "Authorization",
             "value": "Bearer {{friend_access_token}}"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "{{request_idempotency_key}}"
           }
         ],
         "auth": {
@@ -2709,6 +2749,10 @@
           {
             "key": "Authorization",
             "value": "Bearer {{friend_access_token}}"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "{{request_idempotency_key}}"
           }
         ],
         "auth": {
@@ -2747,6 +2791,10 @@
           {
             "key": "Authorization",
             "value": "Bearer {{peer_access_token}}"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "{{request_idempotency_key}}"
           }
         ],
         "auth": {
@@ -3039,6 +3087,10 @@
           {
             "key": "Authorization",
             "value": "Bearer {{friend_access_token}}"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "{{request_idempotency_key}}"
           }
         ],
         "auth": {
@@ -3296,6 +3348,10 @@
           {
             "key": "Authorization",
             "value": "Bearer {{friend_access_token}}"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "{{request_idempotency_key}}"
           }
         ],
         "auth": {
@@ -3356,6 +3412,43 @@
             "type": "text/javascript",
             "exec": [
               "pm.test(\"Статус 204\", function () { pm.response.to.have.status(204); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Другой участник не обрабатывает закрытую заявку",
+      "request": {
+        "method": "DELETE",
+        "url": "{{base_url}}/friend-requests/{{friend_request_id}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{peer_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"username\",\"password\",\"user_id\",\"friend_access_token\",\"peer_id\",\"peer_username\",\"peer_access_token\",\"outsider_id\",\"outsider_username\",\"outsider_access_token\",\"friend_request_id\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 409\",function(){pm.response.to.have.status(409);});",
+              "pm.test(\"Заявка неактуальна\",function(){pm.expect(pm.response.json().error.code).to.equal(\"FRIEND_REQUEST_NOT_PENDING\");});"
             ]
           }
         }
@@ -3443,6 +3536,10 @@
           {
             "key": "Authorization",
             "value": "Bearer {{friend_access_token}}"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "{{request_idempotency_key}}"
           }
         ],
         "auth": {
@@ -3503,6 +3600,43 @@
             "type": "text/javascript",
             "exec": [
               "pm.test(\"Статус 204\", function () { pm.response.to.have.status(204); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Другой участник не обрабатывает закрытую заявку",
+      "request": {
+        "method": "DELETE",
+        "url": "{{base_url}}/friend-requests/{{friend_request_id}}",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{friend_access_token}}"
+          }
+        ],
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "[\"username\",\"password\",\"user_id\",\"friend_access_token\",\"peer_id\",\"peer_username\",\"peer_access_token\",\"outsider_id\",\"outsider_username\",\"outsider_access_token\",\"friend_request_id\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Статус 409\",function(){pm.response.to.have.status(409);});",
+              "pm.test(\"Заявка неактуальна\",function(){pm.expect(pm.response.json().error.code).to.equal(\"FRIEND_REQUEST_NOT_PENDING\");});"
             ]
           }
         }
@@ -4067,6 +4201,10 @@
           {
             "key": "Authorization",
             "value": "Bearer {{friend_access_token}}"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "{{request_idempotency_key}}"
           }
         ],
         "auth": {
@@ -4104,6 +4242,10 @@
           {
             "key": "Authorization",
             "value": "Bearer {{peer_access_token}}"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "{{request_idempotency_key}}"
           }
         ],
         "auth": {
@@ -4289,6 +4431,10 @@
           {
             "key": "Authorization",
             "value": "Bearer {{friend_access_token}}"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "{{request_idempotency_key}}"
           }
         ],
         "auth": {
@@ -4363,6 +4509,10 @@
           {
             "key": "Authorization",
             "value": "Bearer {{friend_access_token}}"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "{{request_idempotency_key}}"
           }
         ],
         "auth": {
@@ -4622,6 +4772,10 @@
           {
             "key": "Authorization",
             "value": "Bearer {{peer_access_token}}"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "{{request_idempotency_key}}"
           }
         ],
         "auth": {
@@ -4770,6 +4924,10 @@
           {
             "key": "Authorization",
             "value": "Bearer {{friend_access_token}}"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "{{request_idempotency_key}}"
           }
         ],
         "auth": {
@@ -5670,9 +5828,2601 @@
           }
         }
       ]
+    },
+    {
+      "name": "Внутреннее API",
+      "item": [
+        {
+          "name": "Проверка сессии от collection_service_token",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/internal/auth/introspect",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{collection_service_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"access_token\": \"{{friend_access_token}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"collection_service_token\", \"community_service_token\", \"catalog_service_token\", \"moderation_service_token\", \"internal_blocks_cursor\", \"user_id\", \"peer_id\", \"outsider_id\", \"username\", \"friend_access_token\", \"access_token\", \"peer_access_token\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Активная сессия, только active и user_id\", function () { const p=pm.response.json(); pm.expect(p.active).to.equal(true); pm.expect(p.user_id).to.equal(pm.collectionVariables.get(\"user_id\")); pm.expect(p).to.have.all.keys(\"active\",\"user_id\"); });",
+                  "pm.test(\"Кеширование отключено\", function () { pm.expect(pm.response.headers.get(\"Cache-Control\")).to.equal(\"no-store\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Проверка сессии от community_service_token",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/internal/auth/introspect",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{community_service_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"access_token\": \"{{friend_access_token}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"collection_service_token\", \"community_service_token\", \"catalog_service_token\", \"moderation_service_token\", \"internal_blocks_cursor\", \"user_id\", \"peer_id\", \"outsider_id\", \"username\", \"friend_access_token\", \"access_token\", \"peer_access_token\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Активная сессия, только active и user_id\", function () { const p=pm.response.json(); pm.expect(p.active).to.equal(true); pm.expect(p.user_id).to.equal(pm.collectionVariables.get(\"user_id\")); pm.expect(p).to.have.all.keys(\"active\",\"user_id\"); });",
+                  "pm.test(\"Кеширование отключено\", function () { pm.expect(pm.response.headers.get(\"Cache-Control\")).to.equal(\"no-store\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Проверка сессии от catalog_service_token",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/internal/auth/introspect",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{catalog_service_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"access_token\": \"{{friend_access_token}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"collection_service_token\", \"community_service_token\", \"catalog_service_token\", \"moderation_service_token\", \"internal_blocks_cursor\", \"user_id\", \"peer_id\", \"outsider_id\", \"username\", \"friend_access_token\", \"access_token\", \"peer_access_token\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Активная сессия, только active и user_id\", function () { const p=pm.response.json(); pm.expect(p.active).to.equal(true); pm.expect(p.user_id).to.equal(pm.collectionVariables.get(\"user_id\")); pm.expect(p).to.have.all.keys(\"active\",\"user_id\"); });",
+                  "pm.test(\"Кеширование отключено\", function () { pm.expect(pm.response.headers.get(\"Cache-Control\")).to.equal(\"no-store\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Проверка сессии от moderation_service_token",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/internal/auth/introspect",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{moderation_service_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"access_token\": \"{{friend_access_token}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"collection_service_token\", \"community_service_token\", \"catalog_service_token\", \"moderation_service_token\", \"internal_blocks_cursor\", \"user_id\", \"peer_id\", \"outsider_id\", \"username\", \"friend_access_token\", \"access_token\", \"peer_access_token\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Активная сессия, только active и user_id\", function () { const p=pm.response.json(); pm.expect(p.active).to.equal(true); pm.expect(p.user_id).to.equal(pm.collectionVariables.get(\"user_id\")); pm.expect(p).to.have.all.keys(\"active\",\"user_id\"); });",
+                  "pm.test(\"Кеширование отключено\", function () { pm.expect(pm.response.headers.get(\"Cache-Control\")).to.equal(\"no-store\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Нет служебного токена",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/internal/auth/introspect",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"access_token\": \"{{friend_access_token}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"collection_service_token\", \"community_service_token\", \"catalog_service_token\", \"moderation_service_token\", \"internal_blocks_cursor\", \"user_id\", \"peer_id\", \"outsider_id\", \"username\", \"friend_access_token\", \"access_token\", \"peer_access_token\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 401\", function () { pm.response.to.have.status(401); });",
+                  "pm.test(\"Ошибка SERVICE_UNAUTHORIZED\", function () { pm.expect(pm.response.json().error.code).to.equal(\"SERVICE_UNAUTHORIZED\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Пользовательский токен не служебный",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/internal/auth/introspect",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{friend_access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"access_token\": \"{{friend_access_token}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"collection_service_token\", \"community_service_token\", \"catalog_service_token\", \"moderation_service_token\", \"internal_blocks_cursor\", \"user_id\", \"peer_id\", \"outsider_id\", \"username\", \"friend_access_token\", \"access_token\", \"peer_access_token\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 401\", function () { pm.response.to.have.status(401); });",
+                  "pm.test(\"Ошибка SERVICE_UNAUTHORIZED\", function () { pm.expect(pm.response.json().error.code).to.equal(\"SERVICE_UNAUTHORIZED\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Некорректный пользовательский токен",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/internal/auth/introspect",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{collection_service_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"access_token\": \"broken\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"collection_service_token\", \"community_service_token\", \"catalog_service_token\", \"moderation_service_token\", \"internal_blocks_cursor\", \"user_id\", \"peer_id\", \"outsider_id\", \"username\", \"friend_access_token\", \"access_token\", \"peer_access_token\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Только active=false\", function () { pm.expect(pm.response.json()).to.deep.equal({active:false}); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Отозванная сессия",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/internal/auth/introspect",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{collection_service_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"access_token\": \"{{access_token}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"collection_service_token\", \"community_service_token\", \"catalog_service_token\", \"moderation_service_token\", \"internal_blocks_cursor\", \"user_id\", \"peer_id\", \"outsider_id\", \"username\", \"friend_access_token\", \"access_token\", \"peer_access_token\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Только active=false\", function () { pm.expect(pm.response.json()).to.deep.equal({active:false}); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Нельзя передать роль вместо проверки",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/internal/auth/introspect",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{collection_service_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"access_token\": \"{{friend_access_token}}\", \"role\": \"platform_moderator\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"collection_service_token\", \"community_service_token\", \"catalog_service_token\", \"moderation_service_token\", \"internal_blocks_cursor\", \"user_id\", \"peer_id\", \"outsider_id\", \"username\", \"friend_access_token\", \"access_token\", \"peer_access_token\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 400\", function () { pm.response.to.have.status(400); });",
+                  "pm.test(\"Ошибка INVALID_JSON\", function () { pm.expect(pm.response.json().error.code).to.equal(\"INVALID_JSON\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Гостевой пакет доступа",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/internal/users/access-check",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{collection_service_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"checks\": [{\"owner_id\": \"{{user_id}}\", \"section\": \"profile\"}, {\"owner_id\": \"{{peer_id}}\", \"section\": \"communities\"}]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"collection_service_token\", \"community_service_token\", \"catalog_service_token\", \"moderation_service_token\", \"internal_blocks_cursor\", \"user_id\", \"peer_id\", \"outsider_id\", \"username\", \"friend_access_token\", \"access_token\", \"peer_access_token\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Публичные данные разрешены\", function () { const p=pm.response.json(); pm.expect(p.items.length).to.equal(2); p.items.forEach(function(x){ pm.expect(x.exists).to.equal(true); pm.expect(x.allowed).to.equal(true); }); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Проверка приватной коллекции владельцем",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/internal/users/access-check",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{collection_service_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"access_token\": \"{{friend_access_token}}\", \"checks\": [{\"owner_id\": \"{{user_id}}\", \"section\": \"collection\", \"visibility\": \"private\"}]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"collection_service_token\", \"community_service_token\", \"catalog_service_token\", \"moderation_service_token\", \"internal_blocks_cursor\", \"user_id\", \"peer_id\", \"outsider_id\", \"username\", \"friend_access_token\", \"access_token\", \"peer_access_token\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Владелец допущен\", function () { pm.expect(pm.response.json().items[0].allowed).to.equal(true); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Приватная коллекция закрыта гостю",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/internal/users/access-check",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{collection_service_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"checks\": [{\"owner_id\": \"{{user_id}}\", \"section\": \"collection\", \"visibility\": \"private\"}]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"collection_service_token\", \"community_service_token\", \"catalog_service_token\", \"moderation_service_token\", \"internal_blocks_cursor\", \"user_id\", \"peer_id\", \"outsider_id\", \"username\", \"friend_access_token\", \"access_token\", \"peer_access_token\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Доступ запрещён\", function () { pm.expect(pm.response.json().items[0].allowed).to.equal(false); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Каталог не проверяет приватность",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/internal/users/access-check",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{catalog_service_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"checks\": [{\"owner_id\": \"{{user_id}}\", \"section\": \"profile\"}, {\"owner_id\": \"{{peer_id}}\", \"section\": \"communities\"}]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"collection_service_token\", \"community_service_token\", \"catalog_service_token\", \"moderation_service_token\", \"internal_blocks_cursor\", \"user_id\", \"peer_id\", \"outsider_id\", \"username\", \"friend_access_token\", \"access_token\", \"peer_access_token\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 403\", function () { pm.response.to.have.status(403); });",
+                  "pm.test(\"Ошибка FORBIDDEN\", function () { pm.expect(pm.response.json().error.code).to.equal(\"FORBIDDEN\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Community не задаёт видимость коллекций",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/internal/users/access-check",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{community_service_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"checks\": [{\"owner_id\": \"{{user_id}}\", \"section\": \"collection\", \"visibility\": \"public\"}]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"collection_service_token\", \"community_service_token\", \"catalog_service_token\", \"moderation_service_token\", \"internal_blocks_cursor\", \"user_id\", \"peer_id\", \"outsider_id\", \"username\", \"friend_access_token\", \"access_token\", \"peer_access_token\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 403\", function () { pm.response.to.have.status(403); });",
+                  "pm.test(\"Ошибка FORBIDDEN\", function () { pm.expect(pm.response.json().error.code).to.equal(\"FORBIDDEN\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Пустой пакет",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/internal/users/access-check",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{collection_service_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"checks\": []}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"collection_service_token\", \"community_service_token\", \"catalog_service_token\", \"moderation_service_token\", \"internal_blocks_cursor\", \"user_id\", \"peer_id\", \"outsider_id\", \"username\", \"friend_access_token\", \"access_token\", \"peer_access_token\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 400\", function () { pm.response.to.have.status(400); });",
+                  "pm.test(\"Ошибка INVALID_REQUEST\", function () { pm.expect(pm.response.json().error.code).to.equal(\"INVALID_REQUEST\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Нельзя подменить зрителя",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/internal/users/access-check",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{collection_service_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"viewer_id\": \"{{user_id}}\", \"checks\": [{\"owner_id\": \"{{user_id}}\", \"section\": \"profile\"}, {\"owner_id\": \"{{peer_id}}\", \"section\": \"communities\"}]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"collection_service_token\", \"community_service_token\", \"catalog_service_token\", \"moderation_service_token\", \"internal_blocks_cursor\", \"user_id\", \"peer_id\", \"outsider_id\", \"username\", \"friend_access_token\", \"access_token\", \"peer_access_token\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 400\", function () { pm.response.to.have.status(400); });",
+                  "pm.test(\"Ошибка INVALID_JSON\", function () { pm.expect(pm.response.json().error.code).to.equal(\"INVALID_JSON\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Карточки и неизвестный ID",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/internal/users/previews",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{catalog_service_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"user_ids\": [\"{{user_id}}\", \"{{peer_id}}\", \"00000000-0000-4000-8000-000000000001\"]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"collection_service_token\", \"community_service_token\", \"catalog_service_token\", \"moderation_service_token\", \"internal_blocks_cursor\", \"user_id\", \"peer_id\", \"outsider_id\", \"username\", \"friend_access_token\", \"access_token\", \"peer_access_token\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Публичные карточки и пропущенный ID\", function () { const p=pm.response.json(); pm.expect(p.items.length).to.equal(2); p.items.forEach(function(x){pm.expect(x).to.have.all.keys(\"id\",\"username\",\"avatar_url\");}); pm.expect(p.not_found_ids).to.deep.equal([\"00000000-0000-4000-8000-000000000001\"]); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Повтор ID в карточках",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/internal/users/previews",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{collection_service_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"user_ids\": [\"{{user_id}}\", \"{{user_id}}\"]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"collection_service_token\", \"community_service_token\", \"catalog_service_token\", \"moderation_service_token\", \"internal_blocks_cursor\", \"user_id\", \"peer_id\", \"outsider_id\", \"username\", \"friend_access_token\", \"access_token\", \"peer_access_token\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 400\", function () { pm.response.to.have.status(400); });",
+                  "pm.test(\"Ошибка INVALID_REQUEST\", function () { pm.expect(pm.response.json().error.code).to.equal(\"INVALID_REQUEST\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Пустой список блокировок для Community",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/internal/users/{{user_id}}/blocked-user-ids",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{community_service_token}}"
+              },
+              {
+                "key": "X-User-Authorization",
+                "value": "Bearer {{friend_access_token}}"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"collection_service_token\", \"community_service_token\", \"catalog_service_token\", \"moderation_service_token\", \"internal_blocks_cursor\", \"user_id\", \"peer_id\", \"outsider_id\", \"username\", \"friend_access_token\", \"access_token\", \"peer_access_token\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Пустой набор ID\", function () { pm.expect(pm.response.json().items).to.deep.equal([]); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Коллекциям нельзя читать блокировки",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/internal/users/{{user_id}}/blocked-user-ids",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{collection_service_token}}"
+              },
+              {
+                "key": "X-User-Authorization",
+                "value": "Bearer {{friend_access_token}}"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"collection_service_token\", \"community_service_token\", \"catalog_service_token\", \"moderation_service_token\", \"internal_blocks_cursor\", \"user_id\", \"peer_id\", \"outsider_id\", \"username\", \"friend_access_token\", \"access_token\", \"peer_access_token\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 403\", function () { pm.response.to.have.status(403); });",
+                  "pm.test(\"Ошибка FORBIDDEN\", function () { pm.expect(pm.response.json().error.code).to.equal(\"FORBIDDEN\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Community не читает чужие блокировки",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/internal/users/{{peer_id}}/blocked-user-ids",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{community_service_token}}"
+              },
+              {
+                "key": "X-User-Authorization",
+                "value": "Bearer {{friend_access_token}}"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"collection_service_token\", \"community_service_token\", \"catalog_service_token\", \"moderation_service_token\", \"internal_blocks_cursor\", \"user_id\", \"peer_id\", \"outsider_id\", \"username\", \"friend_access_token\", \"access_token\", \"peer_access_token\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 403\", function () { pm.response.to.have.status(403); });",
+                  "pm.test(\"Ошибка FORBIDDEN\", function () { pm.expect(pm.response.json().error.code).to.equal(\"FORBIDDEN\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Для списка нужна пользовательская сессия",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/internal/users/{{user_id}}/blocked-user-ids",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{community_service_token}}"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"collection_service_token\", \"community_service_token\", \"catalog_service_token\", \"moderation_service_token\", \"internal_blocks_cursor\", \"user_id\", \"peer_id\", \"outsider_id\", \"username\", \"friend_access_token\", \"access_token\", \"peer_access_token\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 401\", function () { pm.response.to.have.status(401); });",
+                  "pm.test(\"Ошибка UNAUTHORIZED\", function () { pm.expect(pm.response.json().error.code).to.equal(\"UNAUTHORIZED\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Подготовка блокировки для ленты",
+          "request": {
+            "method": "PUT",
+            "url": "{{base_url}}/users/me/blocks/{{peer_id}}",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{friend_access_token}}"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"collection_service_token\", \"community_service_token\", \"catalog_service_token\", \"moderation_service_token\", \"internal_blocks_cursor\", \"user_id\", \"peer_id\", \"outsider_id\", \"username\", \"friend_access_token\", \"access_token\", \"peer_access_token\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 204\", function () { pm.response.to.have.status(204); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Подготовка блокировки для ленты",
+          "request": {
+            "method": "PUT",
+            "url": "{{base_url}}/users/me/blocks/{{outsider_id}}",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{friend_access_token}}"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"collection_service_token\", \"community_service_token\", \"catalog_service_token\", \"moderation_service_token\", \"internal_blocks_cursor\", \"user_id\", \"peer_id\", \"outsider_id\", \"username\", \"friend_access_token\", \"access_token\", \"peer_access_token\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 204\", function () { pm.response.to.have.status(204); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Первая страница ID блокировок",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/internal/users/{{user_id}}/blocked-user-ids?limit=1",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{community_service_token}}"
+              },
+              {
+                "key": "X-User-Authorization",
+                "value": "Bearer {{friend_access_token}}"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"collection_service_token\", \"community_service_token\", \"catalog_service_token\", \"moderation_service_token\", \"internal_blocks_cursor\", \"user_id\", \"peer_id\", \"outsider_id\", \"username\", \"friend_access_token\", \"access_token\", \"peer_access_token\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Один ID и курсор\", function () { pm.expect(pm.response.json().items.length).to.equal(1); pm.expect(pm.response.json().next_cursor).to.be.a(\"string\").and.not.empty; });",
+                  "if (pm.response.code===200) pm.collectionVariables.set(\"internal_blocks_cursor\",pm.response.json().next_cursor);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Последняя страница ID блокировок",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/internal/users/{{user_id}}/blocked-user-ids?limit=1&cursor={{internal_blocks_cursor}}",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{community_service_token}}"
+              },
+              {
+                "key": "X-User-Authorization",
+                "value": "Bearer {{friend_access_token}}"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"collection_service_token\", \"community_service_token\", \"catalog_service_token\", \"moderation_service_token\", \"internal_blocks_cursor\", \"user_id\", \"peer_id\", \"outsider_id\", \"username\", \"friend_access_token\", \"access_token\", \"peer_access_token\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Последний ID\", function () { pm.expect(pm.response.json().items.length).to.equal(1); pm.expect(pm.response.json().next_cursor).to.equal(null); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Блокировка видна в access-check",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/internal/users/access-check",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{community_service_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"access_token\": \"{{friend_access_token}}\", \"checks\": [{\"owner_id\": \"{{peer_id}}\", \"section\": \"profile\"}]}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"collection_service_token\", \"community_service_token\", \"catalog_service_token\", \"moderation_service_token\", \"internal_blocks_cursor\", \"user_id\", \"peer_id\", \"outsider_id\", \"username\", \"friend_access_token\", \"access_token\", \"peer_access_token\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Публичный доступ сохранён\", function () { const x=pm.response.json().items[0]; pm.expect(x.is_blocked).to.equal(true); pm.expect(x.allowed).to.equal(true); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Очистка блокировки для ленты",
+          "request": {
+            "method": "DELETE",
+            "url": "{{base_url}}/users/me/blocks/{{peer_id}}",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{friend_access_token}}"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"collection_service_token\", \"community_service_token\", \"catalog_service_token\", \"moderation_service_token\", \"internal_blocks_cursor\", \"user_id\", \"peer_id\", \"outsider_id\", \"username\", \"friend_access_token\", \"access_token\", \"peer_access_token\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 204\", function () { pm.response.to.have.status(204); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Очистка блокировки для ленты",
+          "request": {
+            "method": "DELETE",
+            "url": "{{base_url}}/users/me/blocks/{{outsider_id}}",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{friend_access_token}}"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"collection_service_token\", \"community_service_token\", \"catalog_service_token\", \"moderation_service_token\", \"internal_blocks_cursor\", \"user_id\", \"peer_id\", \"outsider_id\", \"username\", \"friend_access_token\", \"access_token\", \"peer_access_token\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 204\", function () { pm.response.to.have.status(204); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Пустой пользовательский токен",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/internal/auth/introspect",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{collection_service_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"access_token\": \"\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"collection_service_token\", \"community_service_token\", \"catalog_service_token\", \"moderation_service_token\", \"internal_blocks_cursor\", \"user_id\", \"peer_id\", \"outsider_id\", \"username\", \"friend_access_token\", \"access_token\", \"peer_access_token\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Только active=false\", function () { pm.expect(pm.response.json()).to.deep.equal({active:false}); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Отсутствующий пользовательский токен",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/internal/auth/introspect",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{collection_service_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"collection_service_token\", \"community_service_token\", \"catalog_service_token\", \"moderation_service_token\", \"internal_blocks_cursor\", \"user_id\", \"peer_id\", \"outsider_id\", \"username\", \"friend_access_token\", \"access_token\", \"peer_access_token\"].forEach(function(key) { pm.variables.set(key, pm.collectionVariables.get(key)); });"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Только active=false\", function () { pm.expect(pm.response.json()).to.deep.equal({active:false}); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Moderation проверяет право обычного пользователя",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/internal/auth/permission-check",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{moderation_service_token}}"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"access_token\": \"{{friend_access_token}}\", \"permission\": \"catalog_submissions.review\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"friend_access_token\", \"access_token\", \"moderation_service_token\", \"collection_service_token\", \"community_service_token\", \"catalog_service_token\", \"user_id\"].forEach(function(key){pm.variables.set(key,pm.collectionVariables.get(key));});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 200\",function(){pm.response.to.have.status(200);});",
+                  "pm.test(\"У обычного пользователя нет разрешения\",function(){pm.expect(pm.response.json()).to.deep.equal({allowed:false});});",
+                  "pm.test(\"Кеширование отключено\",function(){pm.expect(pm.response.headers.get(\"Cache-Control\")).to.equal(\"no-store\");});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Другой сервис не проверяет административное право: collection_service_token",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/internal/auth/permission-check",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{collection_service_token}}"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"access_token\": \"{{friend_access_token}}\", \"permission\": \"catalog_submissions.review\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"friend_access_token\", \"access_token\", \"moderation_service_token\", \"collection_service_token\", \"community_service_token\", \"catalog_service_token\", \"user_id\"].forEach(function(key){pm.variables.set(key,pm.collectionVariables.get(key));});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 403\",function(){pm.response.to.have.status(403);});",
+                  "pm.test(\"Ошибка FORBIDDEN\",function(){pm.expect(pm.response.json().error.code).to.equal(\"FORBIDDEN\");pm.expect(pm.response.json()).not.to.have.property(\"allowed\");});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Другой сервис не проверяет административное право: community_service_token",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/internal/auth/permission-check",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{community_service_token}}"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"access_token\": \"{{friend_access_token}}\", \"permission\": \"catalog_submissions.review\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"friend_access_token\", \"access_token\", \"moderation_service_token\", \"collection_service_token\", \"community_service_token\", \"catalog_service_token\", \"user_id\"].forEach(function(key){pm.variables.set(key,pm.collectionVariables.get(key));});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 403\",function(){pm.response.to.have.status(403);});",
+                  "pm.test(\"Ошибка FORBIDDEN\",function(){pm.expect(pm.response.json().error.code).to.equal(\"FORBIDDEN\");pm.expect(pm.response.json()).not.to.have.property(\"allowed\");});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Другой сервис не проверяет административное право: catalog_service_token",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/internal/auth/permission-check",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{catalog_service_token}}"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"access_token\": \"{{friend_access_token}}\", \"permission\": \"catalog_submissions.review\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"friend_access_token\", \"access_token\", \"moderation_service_token\", \"collection_service_token\", \"community_service_token\", \"catalog_service_token\", \"user_id\"].forEach(function(key){pm.variables.set(key,pm.collectionVariables.get(key));});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 403\",function(){pm.response.to.have.status(403);});",
+                  "pm.test(\"Ошибка FORBIDDEN\",function(){pm.expect(pm.response.json().error.code).to.equal(\"FORBIDDEN\");pm.expect(pm.response.json()).not.to.have.property(\"allowed\");});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Право без служебной авторизации",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/internal/auth/permission-check",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"access_token\": \"{{friend_access_token}}\", \"permission\": \"catalog_submissions.review\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"friend_access_token\", \"access_token\", \"moderation_service_token\", \"collection_service_token\", \"community_service_token\", \"catalog_service_token\", \"user_id\"].forEach(function(key){pm.variables.set(key,pm.collectionVariables.get(key));});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 401\",function(){pm.response.to.have.status(401);});",
+                  "pm.test(\"Ошибка SERVICE_UNAUTHORIZED\",function(){pm.expect(pm.response.json().error.code).to.equal(\"SERVICE_UNAUTHORIZED\");pm.expect(pm.response.json()).not.to.have.property(\"allowed\");});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Access пользователя не заменяет секрет Moderation",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/internal/auth/permission-check",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{friend_access_token}}"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"access_token\": \"{{friend_access_token}}\", \"permission\": \"catalog_submissions.review\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"friend_access_token\", \"access_token\", \"moderation_service_token\", \"collection_service_token\", \"community_service_token\", \"catalog_service_token\", \"user_id\"].forEach(function(key){pm.variables.set(key,pm.collectionVariables.get(key));});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 401\",function(){pm.response.to.have.status(401);});",
+                  "pm.test(\"Ошибка SERVICE_UNAUTHORIZED\",function(){pm.expect(pm.response.json().error.code).to.equal(\"SERVICE_UNAUTHORIZED\");pm.expect(pm.response.json()).not.to.have.property(\"allowed\");});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Невалидный пользовательский токен при проверке права",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/internal/auth/permission-check",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{moderation_service_token}}"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"access_token\": \"broken\", \"permission\": \"catalog_submissions.review\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"friend_access_token\", \"access_token\", \"moderation_service_token\", \"collection_service_token\", \"community_service_token\", \"catalog_service_token\", \"user_id\"].forEach(function(key){pm.variables.set(key,pm.collectionVariables.get(key));});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 401\",function(){pm.response.to.have.status(401);});",
+                  "pm.test(\"Ошибка UNAUTHORIZED\",function(){pm.expect(pm.response.json().error.code).to.equal(\"UNAUTHORIZED\");pm.expect(pm.response.json()).not.to.have.property(\"allowed\");});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Пустой пользовательский токен при проверке права",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/internal/auth/permission-check",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{moderation_service_token}}"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"access_token\": \"\", \"permission\": \"catalog_submissions.review\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"friend_access_token\", \"access_token\", \"moderation_service_token\", \"collection_service_token\", \"community_service_token\", \"catalog_service_token\", \"user_id\"].forEach(function(key){pm.variables.set(key,pm.collectionVariables.get(key));});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 401\",function(){pm.response.to.have.status(401);});",
+                  "pm.test(\"Ошибка UNAUTHORIZED\",function(){pm.expect(pm.response.json().error.code).to.equal(\"UNAUTHORIZED\");pm.expect(pm.response.json()).not.to.have.property(\"allowed\");});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Отозванная сессия при проверке права",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/internal/auth/permission-check",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{moderation_service_token}}"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"access_token\": \"{{access_token}}\", \"permission\": \"catalog_submissions.review\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"friend_access_token\", \"access_token\", \"moderation_service_token\", \"collection_service_token\", \"community_service_token\", \"catalog_service_token\", \"user_id\"].forEach(function(key){pm.variables.set(key,pm.collectionVariables.get(key));});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 401\",function(){pm.response.to.have.status(401);});",
+                  "pm.test(\"Ошибка SESSION_REVOKED\",function(){pm.expect(pm.response.json().error.code).to.equal(\"SESSION_REVOKED\");pm.expect(pm.response.json()).not.to.have.property(\"allowed\");});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Неизвестное разрешение",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/internal/auth/permission-check",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{moderation_service_token}}"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"access_token\": \"{{friend_access_token}}\", \"permission\": \"users.admin\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"friend_access_token\", \"access_token\", \"moderation_service_token\", \"collection_service_token\", \"community_service_token\", \"catalog_service_token\", \"user_id\"].forEach(function(key){pm.variables.set(key,pm.collectionVariables.get(key));});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 400\",function(){pm.response.to.have.status(400);});",
+                  "pm.test(\"Ошибка INVALID_REQUEST\",function(){pm.expect(pm.response.json().error.code).to.equal(\"INVALID_REQUEST\");pm.expect(pm.response.json()).not.to.have.property(\"allowed\");});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Отсутствует разрешение",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/internal/auth/permission-check",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{moderation_service_token}}"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"access_token\": \"{{friend_access_token}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"friend_access_token\", \"access_token\", \"moderation_service_token\", \"collection_service_token\", \"community_service_token\", \"catalog_service_token\", \"user_id\"].forEach(function(key){pm.variables.set(key,pm.collectionVariables.get(key));});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 400\",function(){pm.response.to.have.status(400);});",
+                  "pm.test(\"Ошибка INVALID_REQUEST\",function(){pm.expect(pm.response.json().error.code).to.equal(\"INVALID_REQUEST\");pm.expect(pm.response.json()).not.to.have.property(\"allowed\");});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Нельзя подставить административную роль",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/internal/auth/permission-check",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{moderation_service_token}}"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"access_token\": \"{{friend_access_token}}\", \"permission\": \"catalog_submissions.review\", \"role\": \"platform_moderator\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"friend_access_token\", \"access_token\", \"moderation_service_token\", \"collection_service_token\", \"community_service_token\", \"catalog_service_token\", \"user_id\"].forEach(function(key){pm.variables.set(key,pm.collectionVariables.get(key));});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 400\",function(){pm.response.to.have.status(400);});",
+                  "pm.test(\"Ошибка INVALID_JSON\",function(){pm.expect(pm.response.json().error.code).to.equal(\"INVALID_JSON\");pm.expect(pm.response.json()).not.to.have.property(\"allowed\");});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Нельзя подставить ID пользователя",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/internal/auth/permission-check",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{moderation_service_token}}"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"access_token\": \"{{friend_access_token}}\", \"permission\": \"catalog_submissions.review\", \"user_id\": \"{{user_id}}\"}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"friend_access_token\", \"access_token\", \"moderation_service_token\", \"collection_service_token\", \"community_service_token\", \"catalog_service_token\", \"user_id\"].forEach(function(key){pm.variables.set(key,pm.collectionVariables.get(key));});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 400\",function(){pm.response.to.have.status(400);});",
+                  "pm.test(\"Ошибка INVALID_JSON\",function(){pm.expect(pm.response.json().error.code).to.equal(\"INVALID_JSON\");pm.expect(pm.response.json()).not.to.have.property(\"allowed\");});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Состояние сервиса",
+      "item": [
+        {
+          "name": "/health",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/health",
+            "header": [],
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 200\",function(){pm.response.to.have.status(200);});",
+                  "pm.test(\"Состояние сервиса\",function(){pm.expect(pm.response.json()).to.deep.equal({status:\"ok\"});});",
+                  "pm.test(\"Без кеша\",function(){pm.expect(pm.response.headers.get(\"Cache-Control\")).to.equal(\"no-store\");});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "/ready",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/ready",
+            "header": [],
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 200\",function(){pm.response.to.have.status(200);});",
+                  "pm.test(\"Состояние сервиса\",function(){pm.expect(pm.response.json()).to.deep.equal({status:\"ready\"});});",
+                  "pm.test(\"Без кеша\",function(){pm.expect(pm.response.headers.get(\"Cache-Control\")).to.equal(\"no-store\");});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Idempotency-Key заявок",
+      "item": [
+        {
+          "name": "Первое создание с ключом",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/users/{{peer_id}}/friend-requests",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{friend_access_token}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idem_key}}"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"idem_key\",pm.variables.replaceIn(\"{{$guid}}\"));",
+                  "[\"idem_key\", \"idem_request_id\", \"idem_response\", \"user_id\", \"peer_id\", \"outsider_id\", \"friend_access_token\"].forEach(function(key){pm.variables.set(key,pm.collectionVariables.get(key));});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 201\",function(){pm.response.to.have.status(201);});",
+                  "if(pm.response.code===201){pm.collectionVariables.set(\"idem_request_id\",pm.response.json().id);pm.collectionVariables.set(\"idem_response\",JSON.stringify(pm.response.json()));}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Повтор возвращает тот же 201",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/users/{{peer_id}}/friend-requests",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{friend_access_token}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idem_key}}"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"idem_key\", \"idem_request_id\", \"idem_response\", \"user_id\", \"peer_id\", \"outsider_id\", \"friend_access_token\"].forEach(function(key){pm.variables.set(key,pm.collectionVariables.get(key));});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 201\",function(){pm.response.to.have.status(201);});",
+                  "pm.test(\"Исходный ответ сохранён\",function(){pm.expect(pm.response.json()).to.deep.equal(JSON.parse(pm.collectionVariables.get(\"idem_response\")));});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Другой получатель с тем же ключом",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/users/{{outsider_id}}/friend-requests",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{friend_access_token}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idem_key}}"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"idem_key\", \"idem_request_id\", \"idem_response\", \"user_id\", \"peer_id\", \"outsider_id\", \"friend_access_token\"].forEach(function(key){pm.variables.set(key,pm.collectionVariables.get(key));});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 409\",function(){pm.response.to.have.status(409);});",
+                  "pm.test(\"Ошибка IDEMPOTENCY_CONFLICT\",function(){pm.expect(pm.response.json().error.code).to.equal(\"IDEMPOTENCY_CONFLICT\");});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Отмена исходной заявки",
+          "request": {
+            "method": "DELETE",
+            "url": "{{base_url}}/friend-requests/{{idem_request_id}}",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{friend_access_token}}"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"idem_key\", \"idem_request_id\", \"idem_response\", \"user_id\", \"peer_id\", \"outsider_id\", \"friend_access_token\"].forEach(function(key){pm.variables.set(key,pm.collectionVariables.get(key));});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 204\",function(){pm.response.to.have.status(204);});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Повтор после отмены не создаёт заявку",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/users/{{peer_id}}/friend-requests",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{friend_access_token}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idem_key}}"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"idem_key\", \"idem_request_id\", \"idem_response\", \"user_id\", \"peer_id\", \"outsider_id\", \"friend_access_token\"].forEach(function(key){pm.variables.set(key,pm.collectionVariables.get(key));});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 201\",function(){pm.response.to.have.status(201);});",
+                  "pm.test(\"Исходный ответ сохранён\",function(){pm.expect(pm.response.json()).to.deep.equal(JSON.parse(pm.collectionVariables.get(\"idem_response\")));});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Список по-прежнему пуст",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/friend-requests?direction=outgoing",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{friend_access_token}}"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"idem_key\", \"idem_request_id\", \"idem_response\", \"user_id\", \"peer_id\", \"outsider_id\", \"friend_access_token\"].forEach(function(key){pm.variables.set(key,pm.collectionVariables.get(key));});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 200\",function(){pm.response.to.have.status(200);});",
+                  "pm.test(\"Ожидающих нет\",function(){pm.expect(pm.response.json().items).to.deep.equal([]);});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Новое действие с новым ключом",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/users/{{peer_id}}/friend-requests",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{friend_access_token}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idem_key}}"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set(\"idem_key\",pm.variables.replaceIn(\"{{$guid}}\"));",
+                  "[\"idem_key\", \"idem_request_id\", \"idem_response\", \"user_id\", \"peer_id\", \"outsider_id\", \"friend_access_token\"].forEach(function(key){pm.variables.set(key,pm.collectionVariables.get(key));});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 201\",function(){pm.response.to.have.status(201);});",
+                  "pm.test(\"Создана другая заявка\",function(){pm.expect(pm.response.json().id).not.to.equal(pm.collectionVariables.get(\"idem_request_id\"));});",
+                  "if(pm.response.code===201){pm.collectionVariables.set(\"idem_request_id\",pm.response.json().id);pm.collectionVariables.set(\"idem_response\",JSON.stringify(pm.response.json()));}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Очистка новой заявки",
+          "request": {
+            "method": "DELETE",
+            "url": "{{base_url}}/friend-requests/{{idem_request_id}}",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{friend_access_token}}"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"idem_key\", \"idem_request_id\", \"idem_response\", \"user_id\", \"peer_id\", \"outsider_id\", \"friend_access_token\"].forEach(function(key){pm.variables.set(key,pm.collectionVariables.get(key));});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 204\",function(){pm.response.to.have.status(204);});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Ключ обязателен",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/users/{{peer_id}}/friend-requests",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{friend_access_token}}"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"idem_key\", \"idem_request_id\", \"idem_response\", \"user_id\", \"peer_id\", \"outsider_id\", \"friend_access_token\"].forEach(function(key){pm.variables.set(key,pm.collectionVariables.get(key));});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 400\",function(){pm.response.to.have.status(400);});",
+                  "pm.test(\"Ошибка IDEMPOTENCY_KEY_REQUIRED\",function(){pm.expect(pm.response.json().error.code).to.equal(\"IDEMPOTENCY_KEY_REQUIRED\");});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Пробелы в ключе запрещены",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/users/{{peer_id}}/friend-requests",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{friend_access_token}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "invalid key"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"idem_key\", \"idem_request_id\", \"idem_response\", \"user_id\", \"peer_id\", \"outsider_id\", \"friend_access_token\"].forEach(function(key){pm.variables.set(key,pm.collectionVariables.get(key));});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 400\",function(){pm.response.to.have.status(400);});",
+                  "pm.test(\"Ошибка INVALID_IDEMPOTENCY_KEY\",function(){pm.expect(pm.response.json().error.code).to.equal(\"INVALID_IDEMPOTENCY_KEY\");});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Слишком длинный ключ",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/users/{{peer_id}}/friend-requests",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{friend_access_token}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              }
+            ],
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "[\"idem_key\", \"idem_request_id\", \"idem_response\", \"user_id\", \"peer_id\", \"outsider_id\", \"friend_access_token\"].forEach(function(key){pm.variables.set(key,pm.collectionVariables.get(key));});"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Статус 400\",function(){pm.response.to.have.status(400);});",
+                  "pm.test(\"Ошибка INVALID_IDEMPOTENCY_KEY\",function(){pm.expect(pm.response.json().error.code).to.equal(\"INVALID_IDEMPOTENCY_KEY\");});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
     }
   ],
   "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.variables.set(\"request_idempotency_key\",pm.variables.replaceIn(\"{{$guid}}\"));"
+        ]
+      }
+    },
     {
       "listen": "test",
       "script": {

@@ -12,7 +12,7 @@ import (
 )
 
 type FriendshipService interface {
-	Send(context.Context, uuid.UUID, uuid.UUID) (*domain.FriendRequest, error)
+	Send(context.Context, uuid.UUID, uuid.UUID, string) (*domain.FriendRequest, error)
 	Resolve(context.Context, uuid.UUID, uuid.UUID, bool) error
 	Remove(context.Context, uuid.UUID, uuid.UUID) error
 	Requests(context.Context, uuid.UUID, string, int, string) (*domain.FriendRequestsResponse, error)
@@ -60,7 +60,16 @@ func (h *FriendshipHandler) Send(c *gin.Context) {
 		writeServiceError(c, domain.ErrProfileNotFound)
 		return
 	}
-	request, err := h.service.Send(c.Request.Context(), actor, target)
+	keys := c.Request.Header.Values("Idempotency-Key")
+	if len(keys) > 1 {
+		writeFriendshipError(c, domain.ErrInvalidIdempotencyKey)
+		return
+	}
+	if c.Request.ContentLength != 0 {
+		writeError(c, http.StatusBadRequest, "INVALID_REQUEST", "Тело запроса не требуется")
+		return
+	}
+	request, err := h.service.Send(c.Request.Context(), actor, target, c.GetHeader("Idempotency-Key"))
 	if err != nil {
 		writeFriendshipError(c, err)
 		return
@@ -216,6 +225,12 @@ func writeFriendshipError(c *gin.Context, err error) {
 		return
 	}
 	switch {
+	case errors.Is(err, domain.ErrIdempotencyKeyRequired):
+		writeError(c, http.StatusBadRequest, "IDEMPOTENCY_KEY_REQUIRED", "Укажите заголовок Idempotency-Key")
+	case errors.Is(err, domain.ErrInvalidIdempotencyKey):
+		writeError(c, http.StatusBadRequest, "INVALID_IDEMPOTENCY_KEY", "Некорректный Idempotency-Key")
+	case errors.Is(err, domain.ErrIdempotencyConflict):
+		writeError(c, http.StatusConflict, "IDEMPOTENCY_CONFLICT", "Idempotency-Key уже использован для другого запроса")
 	case errors.Is(err, domain.ErrSelfFriendship):
 		writeError(c, http.StatusBadRequest, "SELF_ACTION", "Нельзя выполнить действие с самим собой")
 	case errors.Is(err, domain.ErrInvalidDirection):

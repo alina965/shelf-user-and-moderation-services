@@ -1,4 +1,5 @@
 DROP TABLE IF EXISTS refresh_tokens;
+DROP TABLE IF EXISTS idempotency_keys;
 DROP TABLE IF EXISTS sessions;
 DROP TABLE IF EXISTS profile_privacy;
 DROP TABLE IF EXISTS login_attempts;
